@@ -328,3 +328,64 @@ function OverworldMinimap({
     </div>
   );
 }
+
+const DG_COLS = 8;
+const DG_ROWS = 8;
+
+function DungeonMinimap({
+  currentCol,
+  currentRow,
+  dungeonLevel,
+  visited,
+}: {
+  currentCol: number;
+  currentRow: number;
+  dungeonLevel: number;
+  visited: Set<string>;
+}) {
+  return (
+    <div>
+      <div
+        className="text-xs font-bold mb-1 text-center"
+        style={{ color: 'var(--text-muted)', letterSpacing: '0.1em' }}
+      >
+        LEVEL {dungeonLevel}
+      </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${DG_COLS}, 1fr)`,
+          gap: 2,
+          background: 'var(--bg-base)',
+          padding: 4,
+          borderRadius: 4,
+        }}
+      >
+        {Array.from({ length: DG_ROWS }, (_, rowIdx) =>
+          Array.from({ length: DG_COLS }, (_, colIdx) => {
+            const col = colIdx + 1;
+            const row = rowIdx + 1;
+            const isCurrent = col === currentCol && row === currentRow;
+            const isVisited = visited.has(`dg:${col},${row}`);
+            let bg = 'var(--bg-elevated)';
+            if (isCurrent) bg = '#D4AF37';
+            else if (isVisited) bg = 'rgba(52,211,153,0.3)';
+            return (
+              <div
+                key={`${col}-${row}`}
+                title={`C${col},R${row}`}
+                style={{
+                  aspectRatio: '1',
+                  borderRadius: 2,
+                  background: bg,
+                  outline: isCurrent ? '1px solid rgba(212,175,55,0.8)' : undefined,
+                  boxShadow: isCurrent ? '0 0 4px rgba(212,175,55,0.6)' : undefined,
+                }}
+              />
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
