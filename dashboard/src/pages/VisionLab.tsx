@@ -78,7 +78,8 @@ export default function VisionLab() {
     // Track visited rooms for minimap dimming
     const pos = decodePosition(data.map_position, data.screen_type);
     if (pos) {
-      const key = `${pos.col},${pos.row}`;
+      const screenCategory = (data.screen_type === 'overworld' || data.screen_type === 'cave') ? 'ow' : 'dg';
+      const key = `${screenCategory}:${pos.col},${pos.row}`;
       setVisitedRooms(prev => {
         const existing = prev[data.racerId] ?? new Set<string>();
         if (existing.has(key)) return prev; // no change needed
