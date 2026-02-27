@@ -24,6 +24,17 @@ function eventColor(type: string): { bg: string; text: string } {
   return { bg: 'var(--bg-elevated)', text: 'var(--text-muted)' };
 }
 
+function screenTypeBadge(screenType: string): { bg: string; color: string } {
+  switch (screenType) {
+    case 'overworld': return { bg: 'rgba(52,211,153,0.2)', color: 'var(--success)' };
+    case 'dungeon':   return { bg: 'rgba(99,102,241,0.2)', color: '#a5b4fc' };
+    case 'cave':      return { bg: 'rgba(234,179,8,0.2)', color: 'var(--warning)' };
+    case 'subscreen': return { bg: 'rgba(59,130,246,0.2)', color: '#93c5fd' };
+    case 'death':     return { bg: 'rgba(239,68,68,0.2)', color: 'var(--danger)' };
+    default:          return { bg: 'var(--bg-elevated)', color: 'var(--text-muted)' };
+  }
+}
+
 interface VisionState {
   racerId: string;
   screen_type: string;
@@ -157,81 +168,125 @@ export default function VisionLab() {
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4">
-          {racers.map(s => (
-            <div
-              key={s.racerId}
-              className="rounded-lg p-4 border space-y-3"
-              style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
-            >
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{s.racerId}</h3>
-                <span
-                  className="text-xs px-2 py-0.5 rounded"
-                  style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
-                >
-                  {s.screen_type}
-                </span>
-              </div>
+          {racers.map(s => {
+            const pos = decodePosition(s.map_position, s.screen_type);
+            const visited = visitedRooms[s.racerId] ?? new Set<string>();
+            const recentDeaths = (deathTimes[s.racerId] ?? []).filter(t => t > Date.now() - 60_000).length;
+            const totalDeaths = (deathTimes[s.racerId] ?? []).length;
+            const sbadge = screenTypeBadge(s.screen_type);
+            const isOverworld = s.screen_type === 'overworld' || s.screen_type === 'cave';
+            const isDungeon = s.screen_type === 'dungeon';
 
-              {/* HUD Values */}
-              <div className="grid grid-cols-4 gap-2 text-center">
-                <HudVal label="Hearts" value={`${s.hearts_current}/${s.hearts_max}${s.has_half_heart ? '½' : ''}`} />
-                <HudVal label="Rupees" value={s.rupees} />
-                <HudVal label="Keys" value={s.keys} />
-                <HudVal label="Bombs" value={s.bombs} />
-              </div>
-
-              {/* Sword + B-item */}
-              <div className="flex gap-4 text-xs">
-                <span style={{ color: 'var(--text-muted)' }}>Sword: <span style={{ color: 'var(--text-secondary)' }}>{s.sword_level}</span></span>
-                <span style={{ color: 'var(--text-muted)' }}>B-item: <span style={{ color: 'var(--text-secondary)' }}>{s.b_item ?? 'none'}</span></span>
-                {s.map_position != null && (
-                  <span style={{ color: 'var(--text-muted)' }}>Map: <span style={{ color: 'var(--text-secondary)' }}>0x{s.map_position.toString(16).padStart(2, '0')}</span></span>
-                )}
-              </div>
-
-              {/* Triforce */}
-              <div>
-                <div className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Triforce</div>
-                <div className="flex gap-1">
-                  {(s.triforce || Array(8).fill(false)).map((has, i) => (
-                    <div
-                      key={i}
-                      className="w-5 h-5 flex items-center justify-center rounded text-[10px] font-bold"
-                      style={{
-                        background: has ? 'var(--accent-subtle)' : 'var(--bg-elevated)',
-                        color: has ? 'var(--accent)' : 'var(--text-muted)',
-                      }}
-                    >
-                      {i + 1}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Items */}
-              <div>
-                <div className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Items</div>
-                <div className="flex flex-wrap gap-1">
-                  {ITEMS.map(item => {
-                    const has = s.items?.[item];
-                    return (
+            return (
+              <div
+                key={s.racerId}
+                className="rounded-lg p-4 border space-y-3"
+                style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
+              >
+                {/* Header: name + screen type badge + death counter */}
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                    {s.racerId}
+                  </h3>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {totalDeaths > 0 && (
                       <span
-                        key={item}
-                        className="px-1.5 py-0.5 rounded text-[10px]"
+                        className="text-xs px-2 py-0.5 rounded font-medium"
                         style={{
-                          background: has ? 'rgba(52,211,153,0.15)' : 'var(--bg-elevated)',
-                          color: has ? 'var(--success)' : 'var(--text-muted)',
+                          background: recentDeaths > 3 ? 'rgba(239,68,68,0.2)' : 'var(--bg-elevated)',
+                          color: recentDeaths > 3 ? 'var(--danger)' : 'var(--text-muted)',
                         }}
                       >
-                        {item.replace(/_/g, ' ')}
+                        {totalDeaths}☠{recentDeaths > 0 ? ` (${recentDeaths}/min)` : ''}
                       </span>
-                    );
-                  })}
+                    )}
+                    <span
+                      className="text-xs px-2 py-0.5 rounded font-medium"
+                      style={{ background: sbadge.bg, color: sbadge.color }}
+                    >
+                      {s.screen_type === 'dungeon' ? `DUNGEON-${s.dungeon_level}` : s.screen_type.toUpperCase()}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Visual minimap */}
+                {pos && isOverworld && (
+                  <OverworldMinimap currentCol={pos.col} currentRow={pos.row} visited={visited} />
+                )}
+                {pos && isDungeon && (
+                  <DungeonMinimap
+                    currentCol={pos.col}
+                    currentRow={pos.row}
+                    dungeonLevel={s.dungeon_level}
+                    visited={visited}
+                  />
+                )}
+                {!pos && (
+                  <div
+                    className="text-xs text-center py-3 rounded"
+                    style={{ background: 'var(--bg-base)', color: 'var(--text-muted)' }}
+                  >
+                    no position data
+                  </div>
+                )}
+
+                {/* HUD Values */}
+                <div className="grid grid-cols-4 gap-2 text-center">
+                  <HudVal label="Hearts" value={`${s.hearts_current}/${s.hearts_max}${s.has_half_heart ? '½' : ''}`} />
+                  <HudVal label="Rupees" value={s.rupees} />
+                  <HudVal label="Keys" value={s.keys} />
+                  <HudVal label="Bombs" value={s.bombs} />
+                </div>
+
+                {/* Sword + B-item */}
+                <div className="flex gap-4 text-xs">
+                  <span style={{ color: 'var(--text-muted)' }}>Sword: <span style={{ color: 'var(--text-secondary)' }}>{s.sword_level}</span></span>
+                  <span style={{ color: 'var(--text-muted)' }}>B-item: <span style={{ color: 'var(--text-secondary)' }}>{s.b_item ?? 'none'}</span></span>
+                </div>
+
+                {/* Triforce */}
+                <div>
+                  <div className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Triforce</div>
+                  <div className="flex gap-1">
+                    {(s.triforce || Array(8).fill(false)).map((has, i) => (
+                      <div
+                        key={i}
+                        className="w-5 h-5 flex items-center justify-center rounded text-[10px] font-bold"
+                        style={{
+                          background: has ? 'var(--accent-subtle)' : 'var(--bg-elevated)',
+                          color: has ? 'var(--accent)' : 'var(--text-muted)',
+                        }}
+                      >
+                        {i + 1}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Items */}
+                <div>
+                  <div className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Items</div>
+                  <div className="flex flex-wrap gap-1">
+                    {ITEMS.map(item => {
+                      const has = s.items?.[item];
+                      return (
+                        <span
+                          key={item}
+                          className="px-1.5 py-0.5 rounded text-[10px]"
+                          style={{
+                            background: has ? 'rgba(52,211,153,0.15)' : 'var(--bg-elevated)',
+                            color: has ? 'var(--success)' : 'var(--text-muted)',
+                          }}
+                        >
+                          {item.replace(/_/g, ' ')}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
