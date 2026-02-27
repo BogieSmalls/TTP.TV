@@ -1,0 +1,121 @@
+@import "tailwindcss";
+@import "./styles/theme.css";
+
+@theme {
+  --color-gold: var(--gold);
+  --color-gold-dim: var(--gold-dim);
+  --color-accent: var(--accent);
+  --color-accent-dim: var(--accent-subtle);
+  --color-panel: var(--bg-surface);
+  --color-panel-light: var(--bg-elevated);
+  --color-surface: var(--bg-base);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+}
+
+/* Modern web fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@font-face {
+  font-family: 'Press Start 2P';
+  src: url('https://fonts.gstatic.com/s/pressstart2p/v15/e3t4euO8T-267oIAQAu6jDQyK3nVivM.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Zelda';
+  src: url('./fonts/zelda.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: var(--text-primary);
+  margin: 0;
+  background:
+    radial-gradient(ellipse at 20% 0%, rgba(99,102,241,0.04), transparent 50%),
+    radial-gradient(ellipse at 80% 100%, rgba(59,130,246,0.03), transparent 50%),
+    var(--bg-base);
+}
+
+[data-theme="light"] body {
+  background:
+    radial-gradient(ellipse at 20% 0%, rgba(99,102,241,0.04), transparent 50%),
+    radial-gradient(ellipse at 80% 100%, rgba(59,130,246,0.02), transparent 50%),
+    var(--bg-base);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  letter-spacing: -0.02em;
+}
+
+.font-pixel {
+  font-family: 'Press Start 2P', monospace;
+}
+
+.font-zelda {
+  font-family: 'Zelda', 'Press Start 2P', monospace;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* ─── Light-mode overrides for dark-only white-alpha utilities ─── */
+/* Many components use text-white/N, bg-white/N which are invisible on light backgrounds.
+   Remap to black-alpha equivalents in light mode. */
+
+@layer utilities {
+  [data-theme="light"] {
+    /* text-white/N → black at same opacity */
+    .text-white\/10 { color: rgb(0 0 0 / 0.1); }
+    .text-white\/15 { color: rgb(0 0 0 / 0.15); }
+    .text-white\/20 { color: rgb(0 0 0 / 0.2); }
+    .text-white\/25 { color: rgb(0 0 0 / 0.25); }
+    .text-white\/30 { color: rgb(0 0 0 / 0.35); }
+    .text-white\/40 { color: rgb(0 0 0 / 0.45); }
+    .text-white\/50 { color: rgb(0 0 0 / 0.55); }
+    .text-white\/60 { color: rgb(0 0 0 / 0.65); }
+    .text-white\/70 { color: rgb(0 0 0 / 0.7); }
+    .text-white\/80 { color: rgb(0 0 0 / 0.8); }
+    .text-white\/90 { color: rgb(0 0 0 / 0.9); }
+
+    /* bg-white/N → black-alpha for subtle backgrounds */
+    .bg-white\/5 { background-color: rgb(0 0 0 / 0.04); }
+    .bg-white\/10 { background-color: rgb(0 0 0 / 0.06); }
+    .bg-white\/15 { background-color: rgb(0 0 0 / 0.08); }
+
+    /* border-white/N → black-alpha for borders */
+    .border-white\/5 { border-color: rgb(0 0 0 / 0.06); }
+    .border-white\/10 { border-color: rgb(0 0 0 / 0.08); }
+    .border-white\/20 { border-color: rgb(0 0 0 / 0.12); }
+    .border-white\/30 { border-color: rgb(0 0 0 / 0.15); }
+    .border-white\/40 { border-color: rgb(0 0 0 / 0.2); }
+
+    /* hover: variants */
+    .hover\:text-white\/50:hover { color: rgb(0 0 0 / 0.55); }
+    .hover\:text-white\/60:hover { color: rgb(0 0 0 / 0.65); }
+    .hover\:text-white\/70:hover { color: rgb(0 0 0 / 0.7); }
+    .hover\:text-white\/80:hover { color: rgb(0 0 0 / 0.8); }
+    .hover\:text-white\/90:hover { color: rgb(0 0 0 / 0.9); }
+    .hover\:bg-white\/5:hover { background-color: rgb(0 0 0 / 0.04); }
+    .hover\:bg-white\/10:hover { background-color: rgb(0 0 0 / 0.06); }
+    .hover\:bg-white\/15:hover { background-color: rgb(0 0 0 / 0.08); }
+
+    /* disabled: variants */
+    .disabled\:text-white\/10:disabled { color: rgb(0 0 0 / 0.1); }
+
+    /* bg-black/N overlays — keep dark for modals */
+    /* .bg-black\/60, .bg-black\/70 are fine as-is */
+  }
+}

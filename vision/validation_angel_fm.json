@@ -1,0 +1,408 @@
+{
+  "session_id": "1dd669c8",
+  "source": "https://twitch.tv/angel_fm",
+  "crop": {
+    "x": 22,
+    "y": 18,
+    "w": 1182,
+    "h": 1037,
+    "confidence": 1.0,
+    "aspect_ratio": 1.1398264223722276,
+    "source_width": 1920,
+    "source_height": 1080,
+    "hud_verified": true
+  },
+  "total_frames": 360,
+  "processing_time_s": 180.8,
+  "video_duration_s": 180.0,
+  "speedup_factor": 1.0,
+  "screen_type_counts": {
+    "unknown": 16,
+    "dungeon": 218,
+    "overworld": 126
+  },
+  "area_time_s": {
+    "dungeon": 9.0,
+    "dungeon_1": 98.0,
+    "dungeon_6": 2.0,
+    "overworld": 63.0,
+    "unknown": 8.0
+  },
+  "screen_transitions": [
+    [
+      2.0,
+      "unknown",
+      "dungeon"
+    ],
+    [
+      100.0,
+      "dungeon",
+      "overworld"
+    ],
+    [
+      113.5,
+      "overworld",
+      "dungeon"
+    ],
+    [
+      120.0,
+      "dungeon",
+      "overworld"
+    ],
+    [
+      131.5,
+      "overworld",
+      "dungeon"
+    ],
+    [
+      134.0,
+      "dungeon",
+      "overworld"
+    ],
+    [
+      170.0,
+      "overworld",
+      "unknown"
+    ],
+    [
+      174.5,
+      "unknown",
+      "overworld"
+    ],
+    [
+      176.5,
+      "overworld",
+      "unknown"
+    ],
+    [
+      178.0,
+      "unknown",
+      "dungeon"
+    ]
+  ],
+  "detector_stats": {
+    "screen_type": {
+      "name": "screen_type",
+      "value_changes": 10,
+      "values_seen": {
+        "unknown": 16,
+        "dungeon": 218,
+        "overworld": 126
+      }
+    },
+    "dungeon_level": {
+      "name": "dungeon_level",
+      "value_changes": 3,
+      "values_seen": {
+        "0": 160,
+        "1": 196,
+        "6": 4
+      }
+    },
+    "hearts_current": {
+      "name": "hearts_current",
+      "value_changes": 13,
+      "values_seen": {
+        "0": 22,
+        "6": 92,
+        "5": 5,
+        "3": 25,
+        "4": 79,
+        "7": 137
+      }
+    },
+    "hearts_max": {
+      "name": "hearts_max",
+      "value_changes": 3,
+      "values_seen": {
+        "3": 4,
+        "7": 101,
+        "8": 128,
+        "9": 127
+      }
+    },
+    "has_half_heart": {
+      "name": "has_half_heart",
+      "value_changes": 7,
+      "values_seen": {
+        "False": 22,
+        "True": 338
+      }
+    },
+    "rupees": {
+      "name": "rupees",
+      "value_changes": 14,
+      "values_seen": {
+        "0": 22,
+        "11": 86,
+        "110": 7,
+        "16": 8,
+        "14": 15,
+        "100": 222
+      }
+    },
+    "keys": {
+      "name": "keys",
+      "value_changes": 8,
+      "values_seen": {
+        "0": 22,
+        "71": 37,
+        "77": 301
+      }
+    },
+    "b_item": {
+      "name": "b_item",
+      "value_changes": 7,
+      "values_seen": {
+        "None": 22,
+        "wand": 338
+      }
+    },
+    "map_position": {
+      "name": "map_position",
+      "value_changes": 21,
+      "values_seen": {
+        "0": 22,
+        "1": 196,
+        "98": 5,
+        "82": 20,
+        "66": 33,
+        "33": 13,
+        "81": 16,
+        "40": 5,
+        "80": 7,
+        "64": 8,
+        "65": 14,
+        "67": 8,
+        "51": 13
+      }
+    },
+    "gannon_nearby": {
+      "name": "gannon_nearby",
+      "value_changes": 3,
+      "values_seen": {
+        "False": 9,
+        "True": 351
+      }
+    },
+    "detected_item": {
+      "name": "detected_item",
+      "value_changes": 20,
+      "values_seen": {
+        "None": 255,
+        "triforce": 105
+      }
+    },
+    "sword_level": {
+      "name": "sword_level",
+      "value_changes": 1,
+      "values_seen": {
+        "0": 92,
+        "1": 268
+      }
+    },
+    "detected_item_y": {
+      "name": "detected_item_y",
+      "value_changes": 11,
+      "values_seen": {
+        "0": 306,
+        "87": 4,
+        "84": 3,
+        "24": 10,
+        "76": 17,
+        "107": 17,
+        "109": 3
+      }
+    }
+  },
+  "anomalies": [
+    {
+      "frame": 4,
+      "detector": "heart_container",
+      "description": "Heart container in D1 (3->7)",
+      "severity": "info",
+      "timestamp": 2.0
+    },
+    {
+      "frame": 97,
+      "detector": "sword_level",
+      "description": "Sword level decreased from 1 to 0",
+      "severity": "warning",
+      "timestamp": 48.5
+    },
+    {
+      "frame": 105,
+      "detector": "heart_container",
+      "description": "Heart container in D1 (7->8)",
+      "severity": "info",
+      "timestamp": 52.5
+    },
+    {
+      "frame": 117,
+      "detector": "sword_level",
+      "description": "Sword level decreased from 1 to 0",
+      "severity": "warning",
+      "timestamp": 58.5
+    },
+    {
+      "frame": 137,
+      "detector": "sword_level",
+      "description": "Sword level decreased from 1 to 0",
+      "severity": "warning",
+      "timestamp": 68.5
+    },
+    {
+      "frame": 157,
+      "detector": "sword_level",
+      "description": "Sword level decreased from 1 to 0",
+      "severity": "warning",
+      "timestamp": 78.5
+    },
+    {
+      "frame": 177,
+      "detector": "sword_level",
+      "description": "Sword level decreased from 1 to 0",
+      "severity": "warning",
+      "timestamp": 88.5
+    },
+    {
+      "frame": 196,
+      "detector": "hearts_max",
+      "description": "Max hearts decreased from 8 to 3",
+      "severity": "warning",
+      "timestamp": 98.0
+    },
+    {
+      "frame": 196,
+      "detector": "dungeon_level",
+      "description": "Dungeon level dropped to 0 while in dungeon",
+      "severity": "warning",
+      "timestamp": 98.0
+    },
+    {
+      "frame": 197,
+      "detector": "sword_level",
+      "description": "Sword level decreased from 1 to 0",
+      "severity": "warning",
+      "timestamp": 98.5
+    },
+    {
+      "frame": 217,
+      "detector": "sword_level",
+      "description": "Sword level decreased from 1 to 0",
+      "severity": "warning",
+      "timestamp": 108.5
+    },
+    {
+      "frame": 233,
+      "detector": "heart_container",
+      "description": "Heart container on overworld (8->9)",
+      "severity": "info",
+      "timestamp": 116.5
+    },
+    {
+      "frame": 237,
+      "detector": "sword_level",
+      "description": "Sword level decreased from 1 to 0",
+      "severity": "warning",
+      "timestamp": 118.5
+    },
+    {
+      "frame": 257,
+      "detector": "sword_level",
+      "description": "Sword level decreased from 1 to 0",
+      "severity": "warning",
+      "timestamp": 128.5
+    },
+    {
+      "frame": 277,
+      "detector": "sword_level",
+      "description": "Sword level decreased from 1 to 0",
+      "severity": "warning",
+      "timestamp": 138.5
+    },
+    {
+      "frame": 297,
+      "detector": "sword_level",
+      "description": "Sword level decreased from 1 to 0",
+      "severity": "warning",
+      "timestamp": 148.5
+    },
+    {
+      "frame": 338,
+      "detector": "sword_level",
+      "description": "Sword level decreased from 1 to 0",
+      "severity": "warning",
+      "timestamp": 169.0
+    },
+    {
+      "frame": 339,
+      "detector": "hearts_max",
+      "description": "Max hearts decreased from 9 to 3",
+      "severity": "warning",
+      "timestamp": 169.5
+    },
+    {
+      "frame": 358,
+      "detector": "sword_level",
+      "description": "Sword level decreased from 1 to 0",
+      "severity": "warning",
+      "timestamp": 179.0
+    }
+  ],
+  "flicker_events": [],
+  "snapshots": [],
+  "total_anomaly_count": 19,
+  "calibration": {
+    "pixel_dx": 3,
+    "pixel_dy": 2
+  },
+  "game_events": [
+    {
+      "frame": 4,
+      "event": "heart_container",
+      "description": "Heart container in D1 (3->7)",
+      "dungeon_level": 1
+    },
+    {
+      "frame": 105,
+      "event": "heart_container",
+      "description": "Heart container in D1 (7->8)",
+      "dungeon_level": 1
+    },
+    {
+      "frame": 123,
+      "event": "dungeon_first_visit",
+      "description": "Entered dungeon 1 for the first time",
+      "dungeon_level": 1
+    },
+    {
+      "frame": 123,
+      "event": "b_item_change",
+      "description": "B-item: wand",
+      "dungeon_level": 1
+    },
+    {
+      "frame": 233,
+      "event": "heart_container",
+      "description": "Heart container on overworld (8->9)",
+      "dungeon_level": 0
+    },
+    {
+      "frame": 356,
+      "event": "dungeon_first_visit",
+      "description": "Entered dungeon 6 for the first time",
+      "dungeon_level": 6
+    }
+  ],
+  "triforce_inferred": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+  ]
+}

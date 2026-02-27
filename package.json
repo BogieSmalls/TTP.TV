@@ -1,0 +1,25 @@
+{
+  "name": "ttp-restream",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TriforceTriplePlay — Zelda 1 Randomizer race restream system",
+  "workspaces": [
+    "server",
+    "overlay",
+    "dashboard"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=server",
+    "dev:all": "concurrently \"npm:dev:server\" \"npm:dev:overlay\" \"npm:dev:dashboard\"",
+    "dev:server": "npm run dev --workspace=server",
+    "dev:overlay": "npm run dev --workspace=overlay",
+    "dev:dashboard": "npm run dev --workspace=dashboard",
+    "build": "npm run build --workspaces",
+    "build:overlay": "npm run build --workspace=overlay",
+    "build:dashboard": "npm run build --workspace=dashboard",
+    "kb:chroma": "knowledge-base/.venv/Scripts/chroma run --path data/knowledge-base/chroma-data --port 8100"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

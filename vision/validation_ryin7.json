@@ -1,0 +1,229 @@
+{
+  "session_id": "897a38c7",
+  "source": "https://twitch.tv/ryin7",
+  "crop": {
+    "x": 688,
+    "y": 24,
+    "w": 384,
+    "h": 360,
+    "confidence": 0.8125,
+    "aspect_ratio": 1.0666666666666667,
+    "source_width": 1920,
+    "source_height": 1080,
+    "hud_verified": true
+  },
+  "total_frames": 360,
+  "processing_time_s": 177.55,
+  "video_duration_s": 180.0,
+  "speedup_factor": 1.01,
+  "screen_type_counts": {
+    "unknown": 2,
+    "overworld": 251,
+    "transition": 6,
+    "dungeon": 101
+  },
+  "area_time_s": {
+    "dungeon": 50.5,
+    "overworld": 125.5,
+    "transition": 3.0,
+    "unknown": 1.0
+  },
+  "screen_transitions": [
+    [
+      1.0,
+      "unknown",
+      "overworld"
+    ],
+    [
+      9.0,
+      "overworld",
+      "transition"
+    ],
+    [
+      12.0,
+      "transition",
+      "overworld"
+    ],
+    [
+      41.5,
+      "overworld",
+      "dungeon"
+    ],
+    [
+      45.0,
+      "dungeon",
+      "overworld"
+    ],
+    [
+      64.5,
+      "overworld",
+      "dungeon"
+    ],
+    [
+      99.5,
+      "dungeon",
+      "overworld"
+    ],
+    [
+      123.5,
+      "overworld",
+      "dungeon"
+    ],
+    [
+      129.5,
+      "dungeon",
+      "overworld"
+    ],
+    [
+      147.5,
+      "overworld",
+      "dungeon"
+    ],
+    [
+      151.0,
+      "dungeon",
+      "overworld"
+    ],
+    [
+      174.0,
+      "overworld",
+      "dungeon"
+    ],
+    [
+      176.5,
+      "dungeon",
+      "overworld"
+    ]
+  ],
+  "detector_stats": {
+    "screen_type": {
+      "name": "screen_type",
+      "value_changes": 13,
+      "values_seen": {
+        "unknown": 2,
+        "overworld": 251,
+        "transition": 6,
+        "dungeon": 101
+      }
+    },
+    "hearts_current": {
+      "name": "hearts_current",
+      "value_changes": 3,
+      "values_seen": {
+        "0": 9,
+        "2": 351
+      }
+    },
+    "hearts_max": {
+      "name": "hearts_max",
+      "value_changes": 1,
+      "values_seen": {
+        "3": 2,
+        "10": 358
+      }
+    },
+    "has_half_heart": {
+      "name": "has_half_heart",
+      "value_changes": 3,
+      "values_seen": {
+        "False": 9,
+        "True": 351
+      }
+    },
+    "bombs": {
+      "name": "bombs",
+      "value_changes": 3,
+      "values_seen": {
+        "0": 9,
+        "7": 351
+      }
+    },
+    "b_item": {
+      "name": "b_item",
+      "value_changes": 3,
+      "values_seen": {
+        "None": 9,
+        "bomb": 351
+      }
+    },
+    "map_position": {
+      "name": "map_position",
+      "value_changes": 13,
+      "values_seen": {
+        "0": 9,
+        "66": 251,
+        "33": 100
+      }
+    },
+    "detected_item": {
+      "name": "detected_item",
+      "value_changes": 4,
+      "values_seen": {
+        "None": 351,
+        "triforce": 9
+      }
+    },
+    "detected_item_y": {
+      "name": "detected_item_y",
+      "value_changes": 2,
+      "values_seen": {
+        "0": 354,
+        "169": 6
+      }
+    }
+  },
+  "anomalies": [
+    {
+      "frame": 2,
+      "detector": "heart_container",
+      "description": "Heart container on overworld (3->10)",
+      "severity": "info",
+      "timestamp": 1.0
+    },
+    {
+      "frame": 17,
+      "detector": "hearts_max",
+      "description": "Max hearts decreased from 10 to 3",
+      "severity": "warning",
+      "timestamp": 8.5
+    },
+    {
+      "frame": 198,
+      "detector": "map_position",
+      "description": "Non-adjacent dungeon jump (staircase?): 33 -> 66",
+      "severity": "info",
+      "timestamp": 99.0
+    }
+  ],
+  "flicker_events": [],
+  "snapshots": [],
+  "total_anomaly_count": 3,
+  "calibration": {
+    "pixel_dx": 1,
+    "pixel_dy": 3
+  },
+  "game_events": [
+    {
+      "frame": 2,
+      "event": "heart_container",
+      "description": "Heart container on overworld (3->10)",
+      "dungeon_level": 0
+    },
+    {
+      "frame": 127,
+      "event": "b_item_change",
+      "description": "B-item: bomb",
+      "dungeon_level": 0
+    }
+  ],
+  "triforce_inferred": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+  ]
+}

@@ -1,0 +1,5 @@
+kokoro>=0.3
+fastapi>=0.100
+uvicorn[standard]>=0.20
+soundfile>=0.12
+numpy

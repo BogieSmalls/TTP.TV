@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1920, height=1080">
+  <title>TTP Overlay</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles/overlay.css">
+</head>
+<body>
+  <div id="overlay">
+    <!-- Top Bar: Race Info -->
+    <div id="top-bar">
+      <div id="race-status" class="status-badge">WAITING</div>
+      <div id="race-timer">0:00:00</div>
+      <div id="race-title">Triforce Triple Play</div>
+    </div>
+
+    <!-- Commentary Display -->
+    <div id="commentary-container">
+      <div id="commentary-name"></div>
+      <div id="commentary-text"></div>
+    </div>
+
+    <!-- Triforce Race Bar -->
+    <div id="triforce-race-bar"></div>
+
+    <!-- Event Toasts -->
+    <div id="event-toasts"></div>
+
+    <!-- Shared Map (between commentary and player panels) -->
+    <div id="shared-map"></div>
+
+    <!-- Player Panels (dynamically populated) -->
+    <div id="player-panels"></div>
+
+    <!-- Bottom Bar: Item Trackers -->
+    <div id="bottom-bar"></div>
+
+    <!-- Seed Item Tracker (race-wide footer) -->
+    <div id="seed-tracker"></div>
+
+    <!-- Replay Indicator -->
+    <div id="replay-indicator"></div>
+
+    <!-- Chat Highlight Lower-Third -->
+    <div id="chat-highlight"></div>
+  </div>
+
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

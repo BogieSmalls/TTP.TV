@@ -1,0 +1,81 @@
+node_modules/
+dist/
+.env
+*.db
+*.log
+
+# Python
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+NUL
+
+# IDE
+.vscode/
+.idea/
+
+# Build artifacts
+overlay/dist/
+dashboard/dist/
+
+# Runtime data
+data/
+logs/
+recordings/
+
+# Config with secrets (use ttp.config.example.json as template)
+ttp.config.json
+
+# Large tools (configure absolute paths in ttp.config.json)
+tools/
+
+# Large knowledge base
+knowledge-base/
+
+# OBS portable installation files (not source)
+content/bin/
+content/config/
+content/data/
+content/obs-plugins/
+content/portable_mode.txt
+
+# Debug / temp output
+debug_*/
+/*.png
+/*.jpg
+server_output.log
+server.log
+
+# Temp scripts and scratch files
+tmp_*.json
+tmp_*.py
+temp_*.py
+analyze_session.js
+direct_query.py
+vision_query.py
+vision_query_result.txt
+test_out.txt
+run_query.bat
+rebuild.bat
+restart-server.ps1
+start-obs.cmd
+
+# Internal planning docs
+plans/
+
+# OBS portable installation
+obs/
+
+# Runtime / tooling
+.agents/
+.claude/
+.playwright-mcp/
+.server.pid
+.env.bak

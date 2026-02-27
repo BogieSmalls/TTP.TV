@@ -1,0 +1,406 @@
+{
+  "session_id": "4fb3d238",
+  "source": "https://use15.playlist.ttvnw.net/v1/playlist/CusE_4-PIXaus1LY-7J6KHuxEgT3GG9pORqc-habKoc3BoWKzuoaT5rqUCj8upmc0KHNOJB3uhuWHfYzTqQhc-49J07Uwg5r7i6zVUDaDYaMbghYc91glP5Z4uPG65HvdHH0xAdX2cKAChdEFCr4216EDAhvZF2wtFPPYdOASGo1J01KIwt7j6PkMO6NkKy--kgDhBrd1WpWKuTDBkaW_LrXpPSmoon8a6BmC--4J5yt1juW41t3s5S2Ovjj4w0_ZPSjfauPKjeS08in4NTFPCa-h4GcNLcUGhcExecL96v5IWjjqq66AavY-b1AT5aG__bWij1hsOIiykp2Mnwj_KB8G0WT1jcE0-OFn1-hQknwjzOd922Gcmv37WmzuXzSREMyIFlo8JW_HvpRNBkNsbwkPKD81DODjg3Y8GDVeq9vSff8bo6L-vaNqNFdO9LtOJw6Y34TQDlrCZLz8txdFnadlEQfzVNHWkbdeBdWIF45mC3yhleFpxXYUF5MqsJTaGZ-gQaERkHL1dH_EFEYKm9zN4_x51iq1uiSTcDlYoxt6J1xhcDsG3ww2kZbbi38N_M0DnxeupgfIm9mMPH3CuhJfQf-GHXmIaSKf9h8KJHOh18A42hrPF5fcYvQld-kjWhQlJhbz4UJG5RFWYPHGhIdgPxLRXZKOVqV43fs-TmElZUfJKNvas_8jI-j29pASK21B8Sn9q_EhzHFEEWmw_Q2D2BJjVs1COABkDHGixI575eVs_eZVy9W6_yjgFRxv1-F9fO1y5AYxC9I632Ij6aEqkAjvLuYfozW10318_pmFFkVnc9mf5HjXjfDMBoMs5_-FOIULx9p0wT_IAEqCXVzLWVhc3QtMjC_Dg.m3u8",
+  "crop": {
+    "x": 652,
+    "y": 165,
+    "w": 592,
+    "h": 555,
+    "confidence": 0.6875,
+    "aspect_ratio": 1.0666666666666667,
+    "source_width": 1280,
+    "source_height": 720,
+    "hud_verified": true
+  },
+  "total_frames": 360,
+  "processing_time_s": 176.85,
+  "video_duration_s": 180.0,
+  "speedup_factor": 1.02,
+  "screen_type_counts": {
+    "unknown": 175,
+    "cave": 3,
+    "transition": 35,
+    "subscreen": 7,
+    "overworld": 108,
+    "dungeon": 32
+  },
+  "area_time_s": {
+    "cave": 1.5,
+    "dungeon": 16.0,
+    "overworld": 54.0,
+    "subscreen": 3.5,
+    "transition": 17.5,
+    "unknown": 87.5
+  },
+  "screen_transitions": [
+    [
+      17.5,
+      "unknown",
+      "cave"
+    ],
+    [
+      19.0,
+      "cave",
+      "transition"
+    ],
+    [
+      25.5,
+      "transition",
+      "unknown"
+    ],
+    [
+      43.0,
+      "unknown",
+      "transition"
+    ],
+    [
+      45.5,
+      "transition",
+      "subscreen"
+    ],
+    [
+      49.0,
+      "subscreen",
+      "unknown"
+    ],
+    [
+      84.5,
+      "unknown",
+      "transition"
+    ],
+    [
+      87.0,
+      "transition",
+      "unknown"
+    ],
+    [
+      91.0,
+      "unknown",
+      "transition"
+    ],
+    [
+      97.0,
+      "transition",
+      "unknown"
+    ],
+    [
+      108.5,
+      "unknown",
+      "overworld"
+    ],
+    [
+      114.5,
+      "overworld",
+      "dungeon"
+    ],
+    [
+      123.5,
+      "dungeon",
+      "overworld"
+    ],
+    [
+      150.0,
+      "overworld",
+      "dungeon"
+    ],
+    [
+      154.0,
+      "dungeon",
+      "overworld"
+    ],
+    [
+      165.5,
+      "overworld",
+      "dungeon"
+    ],
+    [
+      168.5,
+      "dungeon",
+      "overworld"
+    ],
+    [
+      178.5,
+      "overworld",
+      "unknown"
+    ]
+  ],
+  "detector_stats": {
+    "screen_type": {
+      "name": "screen_type",
+      "value_changes": 18,
+      "values_seen": {
+        "unknown": 175,
+        "cave": 3,
+        "transition": 35,
+        "subscreen": 7,
+        "overworld": 108,
+        "dungeon": 32
+      }
+    },
+    "hearts_max": {
+      "name": "hearts_max",
+      "value_changes": 1,
+      "values_seen": {
+        "3": 35,
+        "16": 325
+      }
+    },
+    "rupees": {
+      "name": "rupees",
+      "value_changes": 8,
+      "values_seen": {
+        "0": 35,
+        "63": 182,
+        "67": 12,
+        "116": 32,
+        "66": 99
+      }
+    },
+    "keys": {
+      "name": "keys",
+      "value_changes": 6,
+      "values_seen": {
+        "0": 143,
+        "7": 194,
+        "71": 16,
+        "77": 7
+      }
+    },
+    "bombs": {
+      "name": "bombs",
+      "value_changes": 8,
+      "values_seen": {
+        "0": 70,
+        "7": 182,
+        "6": 11,
+        "18": 97
+      }
+    },
+    "sword_level": {
+      "name": "sword_level",
+      "value_changes": 1,
+      "values_seen": {
+        "0": 35,
+        "1": 325
+      }
+    },
+    "gannon_nearby": {
+      "name": "gannon_nearby",
+      "value_changes": 7,
+      "values_seen": {
+        "False": 71,
+        "True": 289
+      }
+    },
+    "b_item": {
+      "name": "b_item",
+      "value_changes": 13,
+      "values_seen": {
+        "None": 102,
+        "recorder": 126,
+        "letter": 116,
+        "bait": 8,
+        "candle": 8
+      }
+    },
+    "items": {
+      "name": "items",
+      "value_changes": 5,
+      "values_seen": {
+        "{'boomerang': True, 'bombs': True, 'bow': True, 'candle': False, 'recorder': False, 'food': False, 'potion': False, 'magic_rod': False, 'raft': False, 'book': True, 'ring': False, 'ladder': False, 'magic_key': False, 'power_bracelet': False, 'magic_boomerang': False}": 1,
+        "{'boomerang': True, 'bombs': True, 'bow': True, 'candle': False, 'recorder': False, 'food': False, 'potion': False, 'magic_rod': False, 'raft': False, 'book': False, 'ring': False, 'ladder': True, 'magic_key': False, 'power_bracelet': False, 'magic_boomerang': False}": 1,
+        "{'boomerang': True, 'bombs': True, 'bow': True, 'candle': False, 'recorder': False, 'food': False, 'potion': False, 'magic_rod': False, 'raft': False, 'book': True, 'ring': False, 'ladder': False, 'magic_key': False, 'power_bracelet': True, 'magic_boomerang': False}": 1,
+        "{}": 3,
+        "{'boomerang': True, 'bombs': False, 'bow': False, 'candle': True, 'recorder': False, 'food': False, 'potion': False, 'magic_rod': True, 'raft': False, 'book': False, 'ring': False, 'ladder': True, 'magic_key': False, 'power_bracelet': True, 'magic_boomerang': False, 'blue_candle': True, 'red_candle': False}": 1
+      }
+    },
+    "hearts_current": {
+      "name": "hearts_current",
+      "value_changes": 9,
+      "values_seen": {
+        "0": 252,
+        "5": 11,
+        "13": 90,
+        "7": 7
+      }
+    },
+    "has_half_heart": {
+      "name": "has_half_heart",
+      "value_changes": 7,
+      "values_seen": {
+        "False": 252,
+        "True": 108
+      }
+    },
+    "map_position": {
+      "name": "map_position",
+      "value_changes": 16,
+      "values_seen": {
+        "0": 274,
+        "75": 8,
+        "50": 3,
+        "36": 41,
+        "42": 20,
+        "118": 8,
+        "49": 6
+      }
+    },
+    "detected_item": {
+      "name": "detected_item",
+      "value_changes": 8,
+      "values_seen": {
+        "None": 334,
+        "triforce": 26
+      }
+    },
+    "detected_item_y": {
+      "name": "detected_item_y",
+      "value_changes": 5,
+      "values_seen": {
+        "0": 346,
+        "69": 3,
+        "43": 11
+      }
+    },
+    "has_master_key": {
+      "name": "has_master_key",
+      "value_changes": 1,
+      "values_seen": {
+        "False": 247,
+        "True": 113
+      }
+    },
+    "bomb_max": {
+      "name": "bomb_max",
+      "value_changes": 1,
+      "values_seen": {
+        "8": 247,
+        "16": 113
+      }
+    }
+  },
+  "anomalies": [
+    {
+      "frame": 35,
+      "detector": "heart_container",
+      "description": "Heart container in cave (3->16)",
+      "severity": "info",
+      "timestamp": 17.5
+    },
+    {
+      "frame": 225,
+      "detector": "map_position",
+      "description": "Non-adjacent overworld jump: 75 -> 50",
+      "severity": "warning",
+      "timestamp": 112.5
+    },
+    {
+      "frame": 228,
+      "detector": "sword_level",
+      "description": "Sword level decreased from 1 to 0",
+      "severity": "warning",
+      "timestamp": 114.0
+    },
+    {
+      "frame": 229,
+      "detector": "hearts_max",
+      "description": "Max hearts decreased from 16 to 0",
+      "severity": "warning",
+      "timestamp": 114.5
+    },
+    {
+      "frame": 259,
+      "detector": "map_position",
+      "description": "Non-adjacent overworld jump: 36 -> 42",
+      "severity": "warning",
+      "timestamp": 129.5
+    },
+    {
+      "frame": 282,
+      "detector": "map_position",
+      "description": "Non-adjacent overworld jump: 36 -> 118",
+      "severity": "warning",
+      "timestamp": 141.0
+    },
+    {
+      "frame": 299,
+      "detector": "sword_level",
+      "description": "Sword level decreased from 1 to 0",
+      "severity": "warning",
+      "timestamp": 149.5
+    },
+    {
+      "frame": 299,
+      "detector": "has_master_key",
+      "description": "Master key disappeared",
+      "severity": "warning",
+      "timestamp": 149.5
+    },
+    {
+      "frame": 300,
+      "detector": "hearts_max",
+      "description": "Max hearts decreased from 16 to 0",
+      "severity": "warning",
+      "timestamp": 150.0
+    },
+    {
+      "frame": 321,
+      "detector": "map_position",
+      "description": "Non-adjacent overworld jump: 42 -> 49",
+      "severity": "warning",
+      "timestamp": 160.5
+    },
+    {
+      "frame": 330,
+      "detector": "sword_level",
+      "description": "Sword level decreased from 1 to 0",
+      "severity": "warning",
+      "timestamp": 165.0
+    },
+    {
+      "frame": 330,
+      "detector": "has_master_key",
+      "description": "Master key disappeared",
+      "severity": "warning",
+      "timestamp": 165.0
+    },
+    {
+      "frame": 331,
+      "detector": "hearts_max",
+      "description": "Max hearts decreased from 16 to 0",
+      "severity": "warning",
+      "timestamp": 165.5
+    }
+  ],
+  "flicker_events": [],
+  "snapshots": [],
+  "total_anomaly_count": 13,
+  "calibration": {
+    "pixel_dx": 0,
+    "pixel_dy": 0
+  },
+  "game_events": [
+    {
+      "frame": 35,
+      "event": "heart_container",
+      "description": "Heart container in cave (3->16)",
+      "dungeon_level": 0
+    },
+    {
+      "frame": 333,
+      "event": "b_item_change",
+      "description": "B-item: letter",
+      "dungeon_level": 0
+    }
+  ],
+  "triforce_inferred": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+  ]
+}

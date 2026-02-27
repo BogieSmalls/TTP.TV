@@ -1,0 +1,435 @@
+{
+  "race": "silly-rock-8631",
+  "source": "https://racetime.gg/z1r/silly-rock-8631",
+  "frames_dir": "data/extracted-frames/silly-rock-8631-v2",
+  "note": "Golden frame annotations hand-read from extracted VOD frames. Values are in the same units as learn_mode.py detector output (hearts in containers, etc.).",
+  "crop_profiles": {
+    "bbqdotgov": {
+      "crop": [
+        0,
+        -16,
+        783,
+        701
+      ],
+      "stream_width": 1280,
+      "stream_height": 720,
+      "grid_offset": [
+        0,
+        0
+      ],
+      "landmarks": [
+        {
+          "label": "-LIFE-",
+          "x": 184,
+          "y": 22,
+          "w": 46,
+          "h": 9
+        },
+        {
+          "label": "Hearts",
+          "x": 175,
+          "y": 38,
+          "w": 65,
+          "h": 18
+        },
+        {
+          "label": "Rupees",
+          "x": 87,
+          "y": 23,
+          "w": 33,
+          "h": 9
+        },
+        {
+          "label": "Keys",
+          "x": 87,
+          "y": 39,
+          "w": 33,
+          "h": 9
+        },
+        {
+          "label": "Bombs",
+          "x": 87,
+          "y": 47,
+          "w": 33,
+          "h": 9
+        },
+        {
+          "label": "B",
+          "x": 123,
+          "y": 21,
+          "w": 18,
+          "h": 32
+        },
+        {
+          "label": "A",
+          "x": 147,
+          "y": 21,
+          "w": 18,
+          "h": 32
+        },
+        {
+          "label": "Minimap",
+          "x": 16,
+          "y": 23,
+          "w": 64,
+          "h": 32
+        },
+        {
+          "label": "LVL",
+          "x": 16,
+          "y": 14,
+          "w": 64,
+          "h": 9
+        }
+      ]
+    },
+    "bort": {
+      "crop": [
+        42,
+        11,
+        670,
+        535
+      ],
+      "stream_width": 1280,
+      "stream_height": 720,
+      "grid_offset": [
+        0,
+        0
+      ],
+      "landmarks": [
+        {
+          "label": "-LIFE-",
+          "x": 185,
+          "y": 22,
+          "w": 50,
+          "h": 9
+        },
+        {
+          "label": "Hearts",
+          "x": 178,
+          "y": 39,
+          "w": 68,
+          "h": 16
+        },
+        {
+          "label": "Rupees",
+          "x": 87,
+          "y": 23,
+          "w": 33,
+          "h": 9
+        },
+        {
+          "label": "Keys",
+          "x": 87,
+          "y": 39,
+          "w": 33,
+          "h": 9
+        },
+        {
+          "label": "Bombs",
+          "x": 87,
+          "y": 47,
+          "w": 33,
+          "h": 9
+        },
+        {
+          "label": "B",
+          "x": 123,
+          "y": 23,
+          "w": 22,
+          "h": 30
+        },
+        {
+          "label": "A",
+          "x": 148,
+          "y": 23,
+          "w": 20,
+          "h": 30
+        },
+        {
+          "label": "Minimap",
+          "x": 16,
+          "y": 12,
+          "w": 64,
+          "h": 40
+        },
+        {
+          "label": "LVL",
+          "x": 16,
+          "y": 13,
+          "w": 57,
+          "h": 9
+        }
+      ]
+    },
+    "blessedbe_": {
+      "crop": [
+        570,
+        -20,
+        1030,
+        920
+      ],
+      "stream_width": 1600,
+      "stream_height": 900,
+      "grid_offset": [
+        0,
+        0
+      ],
+      "landmarks": [
+        {
+          "label": "-LIFE-",
+          "x": 184,
+          "y": 23,
+          "w": 46,
+          "h": 8
+        },
+        {
+          "label": "Hearts",
+          "x": 176,
+          "y": 38,
+          "w": 65,
+          "h": 18
+        },
+        {
+          "label": "Rupees",
+          "x": 87,
+          "y": 23,
+          "w": 33,
+          "h": 8
+        },
+        {
+          "label": "Keys",
+          "x": 87,
+          "y": 40,
+          "w": 33,
+          "h": 8
+        },
+        {
+          "label": "Bombs",
+          "x": 87,
+          "y": 48,
+          "w": 33,
+          "h": 8
+        },
+        {
+          "label": "B",
+          "x": 123,
+          "y": 23,
+          "w": 18,
+          "h": 33
+        },
+        {
+          "label": "A",
+          "x": 147,
+          "y": 23,
+          "w": 18,
+          "h": 33
+        },
+        {
+          "label": "Minimap",
+          "x": 16,
+          "y": 22,
+          "w": 64,
+          "h": 34
+        },
+        {
+          "label": "LVL",
+          "x": 16,
+          "y": 13,
+          "w": 64,
+          "h": 9
+        }
+      ]
+    }
+  },
+  "golden_frames": [
+    {
+      "file": "bbqdotgov/early_04m58s_f000.jpg",
+      "racer": "bbqdotgov",
+      "vod": "https://www.twitch.tv/videos/2705069678",
+      "timestamp_s": 298,
+      "label": "early",
+      "expected": {
+        "screen_type": "subscreen",
+        "dungeon_level": null,
+        "hearts_current": null,
+        "hearts_max": null,
+        "rupees": null,
+        "keys": null,
+        "bombs": null,
+        "sword_level": null,
+        "b_item": null,
+        "gannon_nearby": false
+      },
+      "notes": "Name registration / ELIMINATION MODE subscreen. No HUD visible."
+    },
+    {
+      "file": "bbqdotgov/mid_30m00s_f003.jpg",
+      "racer": "bbqdotgov",
+      "vod": "https://www.twitch.tv/videos/2705069678",
+      "timestamp_s": 1803,
+      "label": "mid",
+      "expected": {
+        "screen_type": "overworld",
+        "dungeon_level": 0,
+        "hearts_current": 3,
+        "has_half_heart": false,
+        "hearts_max": 5,
+        "rupees": 193,
+        "keys": 1,
+        "bombs": 4,
+        "sword_level": 1,
+        "b_item": "bomb",
+        "gannon_nearby": false
+      },
+      "notes": "Overworld canyon/cliff area. 193 rupees, 1 key, 4 bombs, bomb in B slot, sword in A, 3 full hearts out of 5 containers. -LIFE- visible."
+    },
+    {
+      "file": "bbqdotgov/finish_70m00s_f003.jpg",
+      "racer": "bbqdotgov",
+      "vod": "https://www.twitch.tv/videos/2705069678",
+      "timestamp_s": 4203,
+      "label": "finish",
+      "expected": {
+        "screen_type": "dungeon",
+        "dungeon_level": 6,
+        "hearts_current": 2,
+        "has_half_heart": false,
+        "hearts_max": 10,
+        "rupees": 35,
+        "keys": 0,
+        "has_master_key": true,
+        "bombs": 9,
+        "sword_level": 1,
+        "b_item": "wand",
+        "gannon_nearby": false
+      },
+      "notes": "BOARD-6 dungeon (purple walls, spider enemies). Z-Tracker confirms Max Hearts:10. Keys=A for Master Key (Any Key) — digit reader misreads as '0', so keys:0 is the expected detector output (known limitation, although has_master_key might be True). Wand in B box. 2 hearts current out of 10. Note: stream uses BOARD-X not LEVEL-X for dungeon display."
+    },
+    {
+      "file": "bort/early_04m57s_f000.jpg",
+      "racer": "bort",
+      "vod": "https://www.twitch.tv/videos/2704140534",
+      "timestamp_s": 297,
+      "label": "early",
+      "expected": {
+        "screen_type": "subscreen",
+        "dungeon_level": null,
+        "hearts_current": null,
+        "hearts_max": null,
+        "rupees": null,
+        "keys": null,
+        "bombs": null,
+        "sword_level": null,
+        "b_item": null,
+        "gannon_nearby": false
+      },
+      "notes": "Name registration / ELIMINATION MODE subscreen. No HUD visible."
+    },
+    {
+      "file": "bort/mid_30m00s_f003.jpg",
+      "racer": "bort",
+      "vod": "https://www.twitch.tv/videos/2704140534",
+      "timestamp_s": 1803,
+      "label": "mid",
+      "expected": {
+        "screen_type": "dungeon",
+        "dungeon_level": null,
+        "hearts_current": 4,
+        "has_half_heart": false,
+        "hearts_max": 4,
+        "rupees": 110,
+        "keys": 0,
+        "bombs": 8,
+        "sword_level": 0,
+        "b_item": "candle",
+        "gannon_nearby": false
+      },
+      "notes": "Dungeon 0 (entrance level). White/grey walls, blue cross enemies. 110 rupees, 0 keys, 8 bombs, blue candle in B, A box empty (no sword). 2.5 hearts out of 5."
+    },
+    {
+      "file": "bort/finish_73m00s_f003.jpg",
+      "racer": "bort",
+      "vod": "https://www.twitch.tv/videos/2704140534",
+      "timestamp_s": 4383,
+      "label": "finish",
+      "expected": {
+        "screen_type": "dungeon",
+        "dungeon_level": 9,
+        "hearts_current": 4,
+        "has_half_heart": false,
+        "hearts_max": null,
+        "rupees": 58,
+        "keys": 3,
+        "bombs": 5,
+        "sword_level": 1,
+        "b_item": "candle",
+        "gannon_nearby": false
+      },
+      "notes": "LEVEL-9 dungeon, tan/beige room. -LIFE- showing (not -ROAR-). 58 rupees, 3 keys, 9 bombs, wand in B. 10 hearts current out of 13 max."
+    },
+    {
+      "file": "blessedbe_/early_04m57s_f000.jpg",
+      "racer": "blessedbe_",
+      "vod": "https://www.twitch.tv/videos/2704536561",
+      "timestamp_s": 297,
+      "label": "early",
+      "expected": {
+        "screen_type": "overworld",
+        "dungeon_level": 0,
+        "hearts_current": 3,
+        "has_half_heart": false,
+        "hearts_max": 3,
+        "rupees": 0,
+        "keys": 0,
+        "bombs": 0,
+        "sword_level": 0,
+        "b_item": "candle",
+        "gannon_nearby": false
+      },
+      "notes": "Overworld beach/graveyard area. All counters at 0. Blue candle in B, A box empty (no sword). 2 hearts current out of 3 max. SBL tracker shows OW position 38 (Level 6 graveyard area)."
+    },
+    {
+      "file": "blessedbe_/mid_30m00s_f003.jpg",
+      "racer": "blessedbe_",
+      "vod": "https://www.twitch.tv/videos/2704536561",
+      "timestamp_s": 1803,
+      "label": "mid",
+      "expected": {
+        "screen_type": "overworld",
+        "dungeon_level": 0,
+        "hearts_current": 4,
+        "has_half_heart": false,
+        "hearts_max": 4,
+        "rupees": 70,
+        "keys": 3,
+        "bombs": 5,
+        "sword_level": 0,
+        "b_item": "magic_rod",
+        "gannon_nearby": false
+      },
+      "notes": "Overworld beach/lake area. 70 rupees, 3 keys, 5 bombs, wand in B, A box empty (no sword). 1.5 hearts out of 5 max. -LIFE- visible."
+    },
+    {
+      "file": "blessedbe_/finish_73m00s_f003.jpg",
+      "racer": "blessedbe_",
+      "vod": "https://www.twitch.tv/videos/2704536561",
+      "timestamp_s": 4383,
+      "label": "finish",
+      "expected": {
+        "screen_type": "dungeon",
+        "dungeon_level": 7,
+        "hearts_current": 9,
+        "has_half_heart": false,
+        "hearts_max": 9,
+        "rupees": 178,
+        "keys": 1,
+        "bombs": 15,
+        "sword_level": 0,
+        "b_item": "magic_rod",
+        "gannon_nearby": false
+      },
+      "notes": "LEVEL-7 dungeon (green walls). 178 rupees, 1 key, 15 bombs, wand in B, A box empty. 3 hearts current out of 11 max. -LIFE- showing."
+    }
+  ]
+}

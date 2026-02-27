@@ -1,0 +1,253 @@
+{
+  "session_id": "6f5fe710",
+  "source": "https://twitch.tv/eatmysteel1",
+  "crop": {
+    "x": 0,
+    "y": -25,
+    "w": 1404,
+    "h": 1105,
+    "confidence": 1.0,
+    "aspect_ratio": 1.2705882352941176,
+    "source_width": 1920,
+    "source_height": 1080,
+    "hud_verified": false
+  },
+  "total_frames": 360,
+  "processing_time_s": 178.8,
+  "video_duration_s": 180.0,
+  "speedup_factor": 1.01,
+  "screen_type_counts": {
+    "unknown": 88,
+    "dungeon": 272
+  },
+  "area_time_s": {
+    "dungeon_9": 136.0,
+    "unknown": 44.0
+  },
+  "screen_transitions": [
+    [
+      1.0,
+      "unknown",
+      "dungeon"
+    ],
+    [
+      9.0,
+      "dungeon",
+      "unknown"
+    ],
+    [
+      11.5,
+      "unknown",
+      "dungeon"
+    ],
+    [
+      47.0,
+      "dungeon",
+      "unknown"
+    ],
+    [
+      51.5,
+      "unknown",
+      "dungeon"
+    ],
+    [
+      87.0,
+      "dungeon",
+      "unknown"
+    ],
+    [
+      89.0,
+      "unknown",
+      "dungeon"
+    ],
+    [
+      91.0,
+      "dungeon",
+      "unknown"
+    ],
+    [
+      93.5,
+      "unknown",
+      "dungeon"
+    ],
+    [
+      111.0,
+      "dungeon",
+      "unknown"
+    ],
+    [
+      142.5,
+      "unknown",
+      "dungeon"
+    ]
+  ],
+  "detector_stats": {
+    "screen_type": {
+      "name": "screen_type",
+      "value_changes": 11,
+      "values_seen": {
+        "unknown": 88,
+        "dungeon": 272
+      }
+    },
+    "dungeon_level": {
+      "name": "dungeon_level",
+      "value_changes": 1,
+      "values_seen": {
+        "0": 2,
+        "9": 358
+      }
+    },
+    "hearts_current": {
+      "name": "hearts_current",
+      "value_changes": 5,
+      "values_seen": {
+        "0": 2,
+        "15": 9,
+        "14": 56,
+        "13": 4,
+        "9": 264,
+        "10": 25
+      }
+    },
+    "hearts_max": {
+      "name": "hearts_max",
+      "value_changes": 1,
+      "values_seen": {
+        "3": 2,
+        "15": 358
+      }
+    },
+    "rupees": {
+      "name": "rupees",
+      "value_changes": 6,
+      "values_seen": {
+        "0": 2,
+        "104": 71,
+        "10": 138,
+        "13": 138,
+        "1": 11
+      }
+    },
+    "bombs": {
+      "name": "bombs",
+      "value_changes": 1,
+      "values_seen": {
+        "0": 2,
+        "3": 358
+      }
+    },
+    "b_item": {
+      "name": "b_item",
+      "value_changes": 6,
+      "values_seen": {
+        "None": 2,
+        "wand": 324,
+        "boomerang": 17,
+        "bomb": 17
+      }
+    },
+    "sword_level": {
+      "name": "sword_level",
+      "value_changes": 1,
+      "values_seen": {
+        "0": 2,
+        "1": 358
+      }
+    },
+    "detected_item": {
+      "name": "detected_item",
+      "value_changes": 10,
+      "values_seen": {
+        "None": 330,
+        "triforce": 30
+      }
+    },
+    "map_position": {
+      "name": "map_position",
+      "value_changes": 22,
+      "values_seen": {
+        "0": 14,
+        "4": 278,
+        "3": 68
+      }
+    },
+    "has_half_heart": {
+      "name": "has_half_heart",
+      "value_changes": 3,
+      "values_seen": {
+        "False": 273,
+        "True": 87
+      }
+    },
+    "detected_item_y": {
+      "name": "detected_item_y",
+      "value_changes": 6,
+      "values_seen": {
+        "0": 348,
+        "128": 3,
+        "111": 6,
+        "31": 3
+      }
+    }
+  },
+  "anomalies": [
+    {
+      "frame": 2,
+      "detector": "heart_container",
+      "description": "Heart container in D9 (3->15)",
+      "severity": "info",
+      "timestamp": 1.0
+    },
+    {
+      "frame": 222,
+      "detector": "game_complete",
+      "description": "Game completed (D9 exit, 31 frames of credits)",
+      "severity": "info",
+      "timestamp": 111.0
+    }
+  ],
+  "flicker_events": [],
+  "snapshots": [],
+  "total_anomaly_count": 2,
+  "calibration": {
+    "pixel_dx": 0,
+    "pixel_dy": 6
+  },
+  "game_events": [
+    {
+      "frame": 2,
+      "event": "heart_container",
+      "description": "Heart container in D9 (3->15)",
+      "dungeon_level": 9
+    },
+    {
+      "frame": 135,
+      "event": "dungeon_first_visit",
+      "description": "Entered dungeon 9 for the first time",
+      "dungeon_level": 9
+    },
+    {
+      "frame": 135,
+      "event": "b_item_change",
+      "description": "B-item: wand",
+      "dungeon_level": 9
+    },
+    {
+      "frame": 222,
+      "event": "game_complete",
+      "description": "Game completed! Exited D9 after 31 frames of credits",
+      "dungeon_level": 9
+    }
+  ],
+  "triforce_inferred": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+  ]
+}

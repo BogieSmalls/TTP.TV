@@ -1,0 +1,71 @@
+{
+  "rtmp": {
+    "port": 1935,
+    "httpPort": 8888
+  },
+  "server": {
+    "port": 3000
+  },
+  "obs": {
+    "url": "ws://127.0.0.1:4466",
+    "execPath": "D:/Projects/Streaming/TTPRestream/obs/bin/64bit/obs64.exe"
+  },
+  "twitch": {
+    "channel": "TriforceTriplePlay",
+    "turboToken": "YOUR_TWITCH_OAUTH_TOKEN"
+  },
+  "racetime": {
+    "category": "z1r",
+    "pollIntervalMs": 30000,
+    "goalFilter": "TTP Season 4"
+  },
+  "vision": {
+    "fps": 2,
+    "pythonPath": "./vision/.venv/Scripts/python.exe",
+    "confidence": {
+      "digit": 0.75,
+      "item": 0.7,
+      "heart": 0.6
+    }
+  },
+  "audio": {
+    "monitoringDevice": "Voicemeeter AUX Input",
+    "note": "Set this device as the Audio Monitoring Device in OBS Settings \u00e2\u2020\u2019 Audio \u00e2\u2020\u2019 Advanced"
+  },
+  "canvas": {
+    "width": 1920,
+    "height": 1080
+  },
+  "knowledgeBase": {
+    "chromaUrl": "http://localhost:8100",
+    "chromaCollection": "z1r_knowledge",
+    "ollamaUrl": "http://localhost:11434",
+    "embeddingModel": "nomic-embed-text"
+  },
+  "commentary": {
+    "model": "qwen2.5:32b",
+    "periodicIntervalSec": 60,
+    "cooldownSec": 15,
+    "maxTokens": 150,
+    "temperature": 0.8,
+    "historySize": 20,
+    "kbChunksPerQuery": 3,
+    "activePreset": "classic_broadcast"
+  },
+  "tools": {
+    "ffmpegPath": "./tools/ffmpeg.exe",
+    "streamlinkPath": "C:/Program Files/Streamlink/bin/streamlink.exe"
+  },
+  "tts": {
+    "enabled": true,
+    "pythonPath": "./tts/.venv/Scripts/python.exe",
+    "serviceUrl": "http://127.0.0.1:5123",
+    "servicePort": 5123,
+    "defaultVoice": "af_heart",
+    "speed": 1.0,
+    "voices": {
+      "play_by_play": "am_adam",
+      "color": "bf_emma"
+    }
+  }
+}

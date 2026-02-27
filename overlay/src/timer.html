@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=268, height=44">
+  <title>TTP Timer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 268px;
+      height: 44px;
+      overflow: hidden;
+      font-family: 'Press Start 2P', monospace;
+    }
+    #timer {
+      width: 268px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      letter-spacing: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div id="timer">0:00:00</div>
+  <script type="module" src="./timer.ts"></script>
+</body>
+</html>
