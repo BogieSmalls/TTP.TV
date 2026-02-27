@@ -310,6 +310,8 @@ function OverworldMinimap({
               <img
                 src={roomImageUrl(col, row)}
                 alt={`C${col}R${row}`}
+                loading={isCurrent ? 'eager' : 'lazy'}
+                fetchPriority={isCurrent ? 'high' : 'auto'}
                 style={{
                   width: '100%',
                   height: '100%',
