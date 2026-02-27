@@ -118,9 +118,31 @@ export default function VisionLab() {
 
   const racers = Object.values(states);
 
+  // Build alarm list: racers with >3 deaths in last 60s
+  const now = Date.now();
+  const alarms = racers
+    .map(s => ({
+      racerId: s.racerId,
+      recentDeaths: (deathTimes[s.racerId] ?? []).filter(t => t > now - 60_000).length,
+    }))
+    .filter(a => a.recentDeaths > 3);
+
   return (
     <div className="space-y-6">
       <SectionHeader title="Vision Lab" />
+
+      {alarms.length > 0 && (
+        <div
+          className="rounded-lg px-4 py-3 flex items-center gap-2 text-sm font-medium"
+          style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid var(--danger)', color: 'var(--danger)' }}
+        >
+          <span>⚠</span>
+          <span>
+            FALSE DEATH LIKELY:{' '}
+            {alarms.map(a => `${a.racerId} (${a.recentDeaths} deaths/min)`).join(', ')}
+          </span>
+        </div>
+      )}
 
       {racers.length === 0 ? (
         <div
