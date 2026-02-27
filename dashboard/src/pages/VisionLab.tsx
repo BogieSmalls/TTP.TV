@@ -49,20 +49,59 @@ const ITEMS = [
   'power_bracelet', 'magic_shield', 'magic_key',
 ];
 
+// Decode NES map_position byte → 1-based {col, row}
+function decodePosition(mapPos: number | null, screenType: string): { col: number; row: number } | null {
+  if (mapPos == null || mapPos < 0) return null;
+  if (screenType === 'overworld' || screenType === 'cave') {
+    return { col: (mapPos % 16) + 1, row: Math.floor(mapPos / 16) + 1 };
+  }
+  if (screenType === 'dungeon') {
+    return { col: (mapPos % 8) + 1, row: Math.floor(mapPos / 8) + 1 };
+  }
+  return null;
+}
+
+function roomImageUrl(col: number, row: number): string {
+  return `/api/learn/rooms/C${col}_R${row}.jpg`;
+}
+
 export default function VisionLab() {
   const [states, setStates] = useState<Record<string, VisionState>>({});
   const [events, setEvents] = useState<FlatEvent[]>([]);
+  const [visitedRooms, setVisitedRooms] = useState<Record<string, Set<string>>>({});
+  const [deathTimes, setDeathTimes] = useState<Record<string, number[]>>({});
   const nextId = useRef(0);
 
   const handleVision = useCallback((data: VisionState) => {
-    setStates(prev => ({
-      ...prev,
-      [data.racerId]: data,
-    }));
+    setStates(prev => ({ ...prev, [data.racerId]: data }));
+
+    // Track visited rooms for minimap dimming
+    const pos = decodePosition(data.map_position, data.screen_type);
+    if (pos) {
+      const key = `${pos.col},${pos.row}`;
+      setVisitedRooms(prev => {
+        const existing = prev[data.racerId] ?? new Set<string>();
+        if (existing.has(key)) return prev; // no change needed
+        const next = new Set(existing);
+        next.add(key);
+        return { ...prev, [data.racerId]: next };
+      });
+    }
   }, []);
 
   const handleVisionEvents = useCallback((data: { racerId: string; events: Array<{ type: string; description?: string }> }) => {
     const now = Date.now();
+
+    // Track death timestamps for alarm (keep last 60s only)
+    const deaths = data.events.filter(e => e.type === 'death');
+    if (deaths.length > 0) {
+      setDeathTimes(prev => {
+        const cutoff = now - 60_000;
+        const existing = (prev[data.racerId] ?? []).filter(t => t > cutoff);
+        return { ...prev, [data.racerId]: [...existing, ...deaths.map(() => now)] };
+      });
+    }
+
     const flat: FlatEvent[] = data.events.map(e => ({
       id: nextId.current++,
       racerId: data.racerId,
@@ -70,7 +109,7 @@ export default function VisionLab() {
       description: e.description ?? e.type,
       timestamp: now,
     }));
-    setEvents(prev => [...flat, ...prev].slice(0, 50));
+    setEvents(prev => [...flat, ...prev].slice(0, 100));
   }, []);
 
   useSocketEvent('vision:raw', handleVision);
