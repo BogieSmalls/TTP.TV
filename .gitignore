@@ -67,8 +67,8 @@ rebuild.bat
 restart-server.ps1
 start-obs.cmd
 
-# Internal planning docs
-plans/
+# Internal planning docs (root-level only, not docs/plans/)
+/plans/
 
 # OBS portable installation
 obs/
