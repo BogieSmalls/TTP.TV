@@ -645,6 +645,33 @@ export function createApiRoutes(ctx: RouteContext): Router {
     res.json({ status: 'stopped', racerId });
   });
 
+  // ─── Vision VOD (ad-hoc VOD → VisionLab) ───
+
+  router.post('/vision-vod/start', async (req, res) => {
+    const { racerId, vodUrl, profileId } = req.body as { racerId?: string; vodUrl?: string; profileId?: string };
+    if (!racerId || !vodUrl || !profileId) {
+      res.status(400).json({ error: 'racerId, vodUrl, and profileId are required' });
+      return;
+    }
+    try {
+      await ctx.visionManager.startVisionVod(racerId, vodUrl, profileId);
+      res.json({ status: 'started', racerId, vodUrl });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  router.post('/vision-vod/stop', async (req, res) => {
+    const { racerId } = req.body as { racerId?: string };
+    if (!racerId) {
+      res.status(400).json({ error: 'racerId is required' });
+      return;
+    }
+    await ctx.visionManager.stopVision(racerId);
+    res.json({ status: 'stopped', racerId });
+  });
+
   // ─── Race Management (sub-router) ───
 
   const raceRouter = createRaceRoutes({

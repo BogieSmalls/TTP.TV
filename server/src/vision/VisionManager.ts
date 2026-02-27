@@ -80,6 +80,52 @@ export class VisionManager {
   }
 
   /**
+   * Start vision pipeline for a racer sourced from a VOD URL (via streamlink).
+   */
+  async startVisionVod(racerId: string, vodUrl: string, profileId: string): Promise<void> {
+    if (this.bridges.has(racerId)) {
+      logger.warn(`[VisionManager] Vision already running for ${racerId}`);
+      return;
+    }
+
+    const cropData = await this.cropProfileService.getDefaultForRacer(profileId);
+
+    const options: VisionBridgeOptions = {
+      racerId,
+      source: { type: 'vod', url: vodUrl },
+      cropRegion: {
+        x: cropData.x,
+        y: cropData.y,
+        w: cropData.w,
+        h: cropData.h,
+      },
+      streamWidth: cropData.streamWidth,
+      streamHeight: cropData.streamHeight,
+      gridOffsetDx: cropData.gridOffsetDx,
+      gridOffsetDy: cropData.gridOffsetDy,
+      landmarks: cropData.landmarks ? JSON.stringify(cropData.landmarks) : undefined,
+      cropProfileId: cropData.cropProfileId ?? undefined,
+    };
+
+    const bridge = new VisionBridge(options, this.config);
+
+    bridge.on('error', (err: Error) => {
+      logger.error(`[VisionManager] VOD vision error for ${racerId}: ${err.message}`);
+    });
+
+    this.bridges.set(racerId, bridge);
+
+    try {
+      await bridge.start();
+    } catch (err) {
+      this.bridges.delete(racerId);
+      throw err;
+    }
+
+    logger.info(`[VisionManager] VOD vision started for ${racerId}: ${vodUrl}`);
+  }
+
+  /**
    * Stop vision pipeline for a racer.
    */
   async stopVision(racerId: string): Promise<void> {
