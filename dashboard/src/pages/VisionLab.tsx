@@ -263,3 +263,66 @@ function HudVal({ label, value }: { label: string; value: string | number }) {
     </div>
   );
 }
+
+const OW_COLS = 16;
+const OW_ROWS = 8;
+
+function OverworldMinimap({
+  currentCol,
+  currentRow,
+  visited,
+}: {
+  currentCol: number;
+  currentRow: number;
+  visited: Set<string>;
+}) {
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: `repeat(${OW_COLS}, 1fr)`,
+        gap: 1,
+        background: 'var(--bg-base)',
+        padding: 4,
+        borderRadius: 4,
+      }}
+    >
+      {Array.from({ length: OW_ROWS }, (_, rowIdx) =>
+        Array.from({ length: OW_COLS }, (_, colIdx) => {
+          const col = colIdx + 1;
+          const row = rowIdx + 1;
+          const isCurrent = col === currentCol && row === currentRow;
+          const isVisited = visited.has(`ow:${col},${row}`);
+          return (
+            <div
+              key={`${col}-${row}`}
+              title={`C${col},R${row}`}
+              style={{
+                position: 'relative',
+                aspectRatio: '256/176',
+                overflow: 'hidden',
+                borderRadius: 1,
+                outline: isCurrent ? '2px solid #D4AF37' : undefined,
+                boxShadow: isCurrent ? '0 0 6px rgba(212,175,55,0.8)' : undefined,
+                zIndex: isCurrent ? 1 : 0,
+              }}
+            >
+              <img
+                src={roomImageUrl(col, row)}
+                alt={`C${col}R${row}`}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  display: 'block',
+                  opacity: isCurrent ? 1 : isVisited ? 0.85 : 0.25,
+                  filter: isCurrent ? 'none' : isVisited ? 'none' : 'grayscale(60%)',
+                }}
+              />
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
