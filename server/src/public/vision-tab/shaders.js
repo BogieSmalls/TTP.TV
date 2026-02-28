@@ -63,6 +63,136 @@ fn gold_pass(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
+export const ROOM_SHADER = /* wgsl */`
+struct Calibration {
+  scale_x: f32,
+  scale_y: f32,
+  offset_x: f32,
+  offset_y: f32,
+  video_w: f32,
+  video_h: f32,
+}
+
+fn nes_to_uv(nes_x: f32, nes_y: f32, calib: Calibration) -> vec2<f32> {
+  return vec2<f32>(
+    (nes_x * calib.scale_x + calib.offset_x) / calib.video_w,
+    (nes_y * calib.scale_y + calib.offset_y) / calib.video_h,
+  );
+}
+
+@group(0) @binding(0) var source: texture_external;
+@group(0) @binding(1) var src_sampler: sampler;
+@group(0) @binding(2) var room_templates: texture_2d_array<f32>;
+@group(0) @binding(3) var<uniform> calib: Calibration;
+@group(0) @binding(4) var<storage, read_write> scores: array<f32>;
+
+const RESIZED_W: u32 = 64u;
+const RESIZED_H: u32 = 44u;
+const N_PIXELS: f32 = 2816.0; // 64 * 44
+
+// Each thread handles one column (RESIZED_H pixels) of the 64×44 resized area.
+// workgroup_size(64): one workgroup per room template, 64 threads per workgroup.
+var<workgroup> ws_src: array<f32, 64>;
+var<workgroup> ws_tmpl: array<f32, 64>;
+var<workgroup> ws_cross: array<f32, 64>;
+var<workgroup> ws_src2: array<f32, 64>;
+var<workgroup> ws_tmpl2: array<f32, 64>;
+var<workgroup> ws_reduce: array<f32, 64>;
+
+@compute @workgroup_size(64)
+fn room_match(
+  @builtin(workgroup_id) wid: vec3<u32>,
+  @builtin(local_invocation_index) lid: u32,
+) {
+  let room_idx = wid.x;
+
+  // Each thread accumulates one column (44 pixels)
+  var src_sum: f32 = 0.0;
+  var tmpl_sum: f32 = 0.0;
+  var cross_sum: f32 = 0.0;
+  var src2_sum: f32 = 0.0;
+  var tmpl2_sum: f32 = 0.0;
+
+  for (var row = 0u; row < RESIZED_H; row++) {
+    let nes_x = f32(lid) * (256.0 / f32(RESIZED_W));
+    let nes_y = 64.0 + f32(row) * (176.0 / f32(RESIZED_H));
+    let uv = nes_to_uv(nes_x, nes_y, calib);
+    let src_rgba = textureSampleBaseClampToEdge(source, src_sampler, uv);
+    let src_luma = src_rgba.r * 0.299 + src_rgba.g * 0.587 + src_rgba.b * 0.114;
+    let tmpl_luma = textureLoad(room_templates, vec2<i32>(i32(lid), i32(row)), i32(room_idx), 0).r;
+
+    src_sum += src_luma;
+    tmpl_sum += tmpl_luma;
+  }
+
+  ws_src[lid] = src_sum;
+  ws_tmpl[lid] = tmpl_sum;
+  workgroupBarrier();
+
+  // Parallel reduce for global sums
+  var stride = 32u;
+  loop {
+    if stride == 0u { break; }
+    if lid < stride {
+      ws_src[lid] += ws_src[lid + stride];
+      ws_tmpl[lid] += ws_tmpl[lid + stride];
+    }
+    workgroupBarrier();
+    stride >>= 1u;
+  }
+
+  let src_mean = ws_src[0] / N_PIXELS;
+  let tmpl_mean = ws_tmpl[0] / N_PIXELS;
+  workgroupBarrier();
+
+  // Second pass: cross-correlation and variances using means
+  var cross_val: f32 = 0.0;
+  var src2_val: f32 = 0.0;
+  var tmpl2_val: f32 = 0.0;
+
+  for (var row = 0u; row < RESIZED_H; row++) {
+    let nes_x = f32(lid) * (256.0 / f32(RESIZED_W));
+    let nes_y = 64.0 + f32(row) * (176.0 / f32(RESIZED_H));
+    let uv = nes_to_uv(nes_x, nes_y, calib);
+    let src_rgba = textureSampleBaseClampToEdge(source, src_sampler, uv);
+    let src_luma = src_rgba.r * 0.299 + src_rgba.g * 0.587 + src_rgba.b * 0.114;
+    let tmpl_luma = textureLoad(room_templates, vec2<i32>(i32(lid), i32(row)), i32(room_idx), 0).r;
+
+    let ds = src_luma - src_mean;
+    let dt = tmpl_luma - tmpl_mean;
+    cross_val += ds * dt;
+    src2_val += ds * ds;
+    tmpl2_val += dt * dt;
+  }
+
+  ws_cross[lid] = cross_val;
+  ws_src2[lid] = src2_val;
+  ws_tmpl2[lid] = tmpl2_val;
+  workgroupBarrier();
+
+  var stride2 = 32u;
+  loop {
+    if stride2 == 0u { break; }
+    if lid < stride2 {
+      ws_cross[lid] += ws_cross[lid + stride2];
+      ws_src2[lid] += ws_src2[lid + stride2];
+      ws_tmpl2[lid] += ws_tmpl2[lid + stride2];
+    }
+    workgroupBarrier();
+    stride2 >>= 1u;
+  }
+
+  if lid == 0u {
+    let denom = sqrt(ws_src2[0] * ws_tmpl2[0]);
+    if denom > 1e-6 {
+      scores[room_idx] = ws_cross[0] / denom;
+    } else {
+      scores[room_idx] = 0.0;
+    }
+  }
+}
+`;
+
 export const NCC_SHADER = /* wgsl */`
 const MAX_TEMPLATES: u32 = 32u;
 

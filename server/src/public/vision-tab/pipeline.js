@@ -1,4 +1,4 @@
-import { AGGREGATE_SHADER, NCC_SHADER } from './shaders.js';
+import { AGGREGATE_SHADER, NCC_SHADER, ROOM_SHADER } from './shaders.js';
 import { TILE_DEFS, MAX_TEMPLATES } from './tileDefs.js';
 
 export class VisionPipeline {
@@ -97,6 +97,70 @@ export class VisionPipeline {
       size: nccResultSize,
       usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
     });
+
+    // Pass 2: Room matching — scores buffer allocated here; pipeline created in _initRoomPipeline()
+    const ROOM_COUNT = 128;
+    this.roomScoresBuffer = d.createBuffer({
+      size: ROOM_COUNT * 4,  // 128 f32 scores
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+    });
+    this.roomStagingBuffer = d.createBuffer({
+      size: ROOM_COUNT * 4,
+      usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+    });
+    // Room templates texture and pipeline set later via _initRoomPipeline()
+    this.roomPipeline = null;
+    this.roomTemplatesTexture = null;
+    this.roomCalibBuffer = null;
+  }
+
+  /** Called by gpu.js after room templates are fetched from /api/vision/room-templates. */
+  _initRoomPipeline(roomTemplates) {
+    if (!roomTemplates || roomTemplates.length === 0) return;
+    const d = this.device;
+    const ROOM_COUNT = roomTemplates.length;
+    const W = 64, H = 44;
+
+    // Upload room template pixels as a 2D texture array (one layer per room)
+    this.roomTemplatesTexture = d.createTexture({
+      size: [W, H, ROOM_COUNT],
+      format: 'r32float',
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+    });
+    for (let i = 0; i < ROOM_COUNT; i++) {
+      const pixels = roomTemplates[i].pixels; // Float32 luma values, length W*H
+      const data = new Float32Array(pixels);
+      d.queue.writeTexture(
+        { texture: this.roomTemplatesTexture, origin: [0, 0, i] },
+        data,
+        { bytesPerRow: W * 4, rowsPerImage: H },
+        [W, H, 1],
+      );
+    }
+
+    // Room calibration uniform: 6 floats = 24 bytes
+    this.roomCalibBuffer = d.createBuffer({
+      size: 6 * 4,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+
+    // Compile ROOM_SHADER and create compute pipeline
+    const roomModule = d.createShaderModule({ code: ROOM_SHADER });
+    this.roomPipeline = d.createComputePipeline({
+      layout: 'auto',
+      compute: { module: roomModule, entryPoint: 'room_match' },
+    });
+  }
+
+  /** Update room calibration uniform (called each frame if room pipeline is active). */
+  _updateRoomCalib(calib) {
+    if (!this.roomCalibBuffer) return;
+    const data = new Float32Array([
+      calib.scale_x, calib.scale_y,
+      calib.offset_x, calib.offset_y,
+      calib.video_w, calib.video_h,
+    ]);
+    this.device.queue.writeBuffer(this.roomCalibBuffer, 0, data);
   }
 
   _updateCalib() {
@@ -156,6 +220,25 @@ export class VisionPipeline {
       pass.dispatchWorkgroups(TILE_DEFS.length, MAX_TEMPLATES);
     }
 
+    // Pass 2: Room matching — dispatched when roomTemplatesTexture is loaded
+    // See _initRoomPipeline() called after room templates are fetched
+    if (this.roomPipeline && this.roomTemplatesTexture) {
+      const roomBindGroup = d.createBindGroup({
+        layout: this.roomPipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: externalTexture },
+          { binding: 1, resource: this.sampler },
+          { binding: 2, resource: this.roomTemplatesTexture.createView({ dimension: '2d-array' }) },
+          { binding: 3, resource: { buffer: this.roomCalibBuffer } },
+          { binding: 4, resource: { buffer: this.roomScoresBuffer } },
+        ],
+      });
+      pass.setPipeline(this.roomPipeline);
+      pass.setBindGroup(0, roomBindGroup);
+      // One workgroup per room (x=room index), 64 threads per workgroup (one per column)
+      pass.dispatchWorkgroups(128);
+    }
+
     // Brightness: game area 256x176 NES pixels, stepped by 4 -> 64x44 threads
     pass.setPipeline(this.brightnessPipeline);
     pass.setBindGroup(0, makeBindGroup(this.brightnessPipeline));
@@ -178,6 +261,9 @@ export class VisionPipeline {
     if (this.nccPipeline) {
       enc.copyBufferToBuffer(this.nccResultBuffer, 0, this.nccStagingBuffer, 0, this.nccResultSize);
     }
+    if (this.roomPipeline && this.roomTemplatesTexture) {
+      enc.copyBufferToBuffer(this.roomScoresBuffer, 0, this.roomStagingBuffer, 0, 128 * 4);
+    }
     d.queue.submit([enc.finish()]);
 
     await this.stagingBuffer.mapAsync(GPUMapMode.READ);
@@ -193,11 +279,21 @@ export class VisionPipeline {
       hudScores = Array.from(nccRaw);
     }
 
+    // Room scores readback
+    let roomScores = [];
+    if (this.roomPipeline && this.roomTemplatesTexture) {
+      await this.roomStagingBuffer.mapAsync(GPUMapMode.READ);
+      const roomRaw = new Float32Array(this.roomStagingBuffer.getMappedRange(0, 128 * 4).slice(0));
+      this.roomStagingBuffer.unmap();
+      roomScores = Array.from(roomRaw);
+    }
+
     return {
       gameBrightness: raw[0] / 1000,
       redRatioAtLife: raw[1] / 1000,
       goldPixelCount: raw[2],
       hudScores,
+      roomScores,
     };
   }
 }
