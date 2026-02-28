@@ -239,7 +239,7 @@ class NesStateDetector:
         sy1, sy2 = max(0, crop_y), min(fh, crop_y + crop_h)
         sx1, sx2 = max(0, crop_x), min(fw, crop_x + crop_w)
         if sy2 > sy1 and sx2 > sx1:
-            nes_region = stream_frame[sy1:sy2, sx1:sx2]
+            nes_region = stream_frame[sy1:sy2, sx1:sx2].copy()
             # Pad if crop extends outside stream frame (e.g. negative crop_y)
             if nes_region.shape[:2] != (crop_h, crop_w):
                 padded = np.zeros((crop_h, crop_w, 3), dtype=np.uint8)

@@ -38,3 +38,28 @@ def test_set_native_frame_propagates_to_screen_classifier():
     assert det.screen_classifier._scale_x == pytest.approx(cw / 256.0)
     det.clear_native_frame()
     assert det.screen_classifier._native_crop is None
+
+
+def test_set_native_frame_propagates_to_all_detectors():
+    det = NesStateDetector('D:/Projects/Streaming/TTPRestream/vision/templates')
+    stream, cx, cy, cw, ch = _make_native_dungeon_frame()
+    det.set_native_frame(stream, cx, cy, cw, ch)
+    assert det.triforce_reader._native_crop is not None
+    assert det.inventory_reader._native_crop is not None
+    det.clear_native_frame()
+    assert det.triforce_reader._native_crop is None
+    assert det.inventory_reader._native_crop is None
+
+
+def test_set_native_frame_negative_crop_y_pads_correctly():
+    det = NesStateDetector('D:/Projects/Streaming/TTPRestream/vision/templates')
+    stream = np.full((720, 1280, 3), 128, dtype=np.uint8)
+    crop_x, crop_y, crop_w, crop_h = 160, -25, 960, 720
+    det.set_native_frame(stream, crop_x, crop_y, crop_w, crop_h)
+    nc = det.screen_classifier._native_crop
+    assert nc.shape == (crop_h, crop_w, 3)
+    # First 25 rows should be black padding
+    assert np.all(nc[:25, :] == 0)
+    # Remaining rows should carry stream content (128)
+    assert np.any(nc[25:, :] > 0)
+    det.clear_native_frame()
