@@ -422,8 +422,10 @@ def main():
             eff_crop_w, eff_crop_h = crop_w, crop_h
 
         detector.set_native_frame(frame, eff_crop_x, eff_crop_y, eff_crop_w, eff_crop_h)
-        process_frame(nes_canonical)
-        detector.clear_native_frame()
+        try:
+            process_frame(nes_canonical)
+        finally:
+            detector.clear_native_frame()
 
         # Overwrite live preview frame for VisionLab
         cv2.imwrite(frame_out_path, nes_canonical, [cv2.IMWRITE_JPEG_QUALITY, 75])

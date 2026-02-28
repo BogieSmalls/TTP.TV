@@ -121,6 +121,8 @@ class TriforceReader:
         cluster_end   = int(sorted_xs[0])
         cluster_count = 1
         for x in sorted_xs[1:]:
+            # Use strict < so two clusters separated by exactly gap_threshold pixels
+            # remain distinct — triforce pieces at max separation are still separate items.
             if x - cluster_end < gap_threshold:
                 cluster_end = int(x)
                 cluster_count += 1
