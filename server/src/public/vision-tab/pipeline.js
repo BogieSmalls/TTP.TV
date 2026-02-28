@@ -1,4 +1,4 @@
-import { AGGREGATE_SHADER, NCC_SHADER, ROOM_SHADER } from './shaders.js';
+import { AGGREGATE_SHADER, NCC_SHADER, ROOM_SHADER, FLOOR_ITEM_SHADER } from './shaders.js';
 import { TILE_DEFS, MAX_TEMPLATES } from './tileDefs.js';
 
 export class VisionPipeline {
@@ -112,6 +112,23 @@ export class VisionPipeline {
     this.roomPipeline = null;
     this.roomTemplatesTexture = null;
     this.roomCalibBuffer = null;
+
+    // Pass 3: Floor item sliding window — results buffer (37 templates × 12 bytes each)
+    // 3 atomics per result (score i32, px i32, py i32) = 12 bytes per template
+    const FLOOR_ITEM_COUNT = 37;
+    this.floorItemResultsBuffer = d.createBuffer({
+      size: FLOOR_ITEM_COUNT * 3 * 4,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+    });
+    this.floorItemStagingBuffer = d.createBuffer({
+      size: FLOOR_ITEM_COUNT * 3 * 4,
+      usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+    });
+    // Pass 3 pipeline and drop templates set later via _initFloorItemPipeline()
+    this.floorItemPipeline = null;
+    this.dropTemplatesTexture = null;
+    this.floorItemCalibBuffer = null;
+    this._floorItemCount = FLOOR_ITEM_COUNT;
   }
 
   /** Called by gpu.js after room templates are fetched from /api/vision/room-templates. */
@@ -239,6 +256,28 @@ export class VisionPipeline {
       pass.dispatchWorkgroups(128);
     }
 
+    // Pass 3: Floor item sliding window — dispatched when dropTemplatesTexture is loaded
+    // See _initFloorItemPipeline() called after drop templates are fetched
+    if (this.floorItemPipeline && this.dropTemplatesTexture) {
+      // Reset floor item results to zero before dispatch
+      d.queue.writeBuffer(this.floorItemResultsBuffer, 0,
+        new Int32Array(this._floorItemCount * 3).fill(0).buffer);
+      const floorBindGroup = d.createBindGroup({
+        layout: this.floorItemPipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: externalTexture },
+          { binding: 1, resource: this.sampler },
+          { binding: 2, resource: this.dropTemplatesTexture.createView({ dimension: '2d-array' }) },
+          { binding: 3, resource: { buffer: this.floorItemCalibBuffer } },
+          { binding: 4, resource: { buffer: this.floorItemResultsBuffer } },
+        ],
+      });
+      pass.setPipeline(this.floorItemPipeline);
+      pass.setBindGroup(0, floorBindGroup);
+      // Dispatch: x=scan_x positions (ceil(256/2)=128), y=scan_y positions (ceil(176/2)=88), z=template count
+      pass.dispatchWorkgroups(128, 88, this._floorItemCount);
+    }
+
     // Brightness: game area 256x176 NES pixels, stepped by 4 -> 64x44 threads
     pass.setPipeline(this.brightnessPipeline);
     pass.setBindGroup(0, makeBindGroup(this.brightnessPipeline));
@@ -264,6 +303,9 @@ export class VisionPipeline {
     if (this.roomPipeline && this.roomTemplatesTexture) {
       enc.copyBufferToBuffer(this.roomScoresBuffer, 0, this.roomStagingBuffer, 0, 128 * 4);
     }
+    if (this.floorItemPipeline && this.dropTemplatesTexture) {
+      enc.copyBufferToBuffer(this.floorItemResultsBuffer, 0, this.floorItemStagingBuffer, 0, this._floorItemCount * 3 * 4);
+    }
     d.queue.submit([enc.finish()]);
 
     await this.stagingBuffer.mapAsync(GPUMapMode.READ);
@@ -288,12 +330,28 @@ export class VisionPipeline {
       roomScores = Array.from(roomRaw);
     }
 
+    // Floor item results readback: each result is [score_i32, px_i32, py_i32]
+    let floorItems = [];
+    if (this.floorItemPipeline && this.dropTemplatesTexture) {
+      await this.floorItemStagingBuffer.mapAsync(GPUMapMode.READ);
+      const floorRaw = new Int32Array(this.floorItemStagingBuffer.getMappedRange(0, this._floorItemCount * 3 * 4).slice(0));
+      this.floorItemStagingBuffer.unmap();
+      for (let i = 0; i < this._floorItemCount; i++) {
+        floorItems.push({
+          score: floorRaw[i * 3 + 0] / 10000,
+          px: floorRaw[i * 3 + 1],
+          py: floorRaw[i * 3 + 2],
+        });
+      }
+    }
+
     return {
       gameBrightness: raw[0] / 1000,
       redRatioAtLife: raw[1] / 1000,
       goldPixelCount: raw[2],
       hudScores,
       roomScores,
+      floorItems,
     };
   }
 }
