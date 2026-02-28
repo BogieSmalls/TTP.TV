@@ -213,3 +213,51 @@ class NesStateDetector:
             # area).  The HUD reader's sword detection is authoritative.
 
         return state
+
+    def set_native_frame(self, stream_frame: np.ndarray,
+                         crop_x: int, crop_y: int,
+                         crop_w: int, crop_h: int) -> None:
+        """Provide native-resolution frame data to all sub-detectors.
+
+        Call this before detect() on every frame. Enables pixel reads at stream
+        resolution (e.g. 960x720) instead of the downscaled 256x240 canonical,
+        dramatically improving accuracy by preserving more signal per tile.
+
+        Args:
+            stream_frame: Full raw stream frame (H x W x 3 BGR).
+            crop_x, crop_y: Top-left of the NES game region in stream pixels.
+            crop_w, crop_h: Size of the NES game region in stream pixels.
+        """
+        scale_x = crop_w / 256.0
+        scale_y = crop_h / 240.0
+
+        # HudReader uses the full stream frame (handles negative crop_y padding)
+        self.hud_reader.set_stream_source(stream_frame, crop_x, crop_y, crop_w, crop_h)
+
+        # Other detectors use the pre-cropped region
+        fh, fw = stream_frame.shape[:2]
+        sy1, sy2 = max(0, crop_y), min(fh, crop_y + crop_h)
+        sx1, sx2 = max(0, crop_x), min(fw, crop_x + crop_w)
+        if sy2 > sy1 and sx2 > sx1:
+            nes_region = stream_frame[sy1:sy2, sx1:sx2]
+            # Pad if crop extends outside stream frame (e.g. negative crop_y)
+            if nes_region.shape[:2] != (crop_h, crop_w):
+                padded = np.zeros((crop_h, crop_w, 3), dtype=np.uint8)
+                dy_off = sy1 - crop_y
+                dx_off = sx1 - crop_x
+                padded[dy_off:dy_off + nes_region.shape[0],
+                       dx_off:dx_off + nes_region.shape[1]] = nes_region
+                nes_region = padded
+        else:
+            nes_region = np.zeros((crop_h, crop_w, 3), dtype=np.uint8)
+
+        self.screen_classifier.set_native_crop(nes_region, scale_x, scale_y)
+        self.triforce_reader.set_native_crop(nes_region, scale_x, scale_y)
+        self.inventory_reader.set_native_crop(nes_region, scale_x, scale_y)
+
+    def clear_native_frame(self) -> None:
+        """Release all native frame references. Call after detect() on every frame."""
+        self.hud_reader.clear_stream_source()
+        self.screen_classifier.clear_native_crop()
+        self.triforce_reader.clear_native_crop()
+        self.inventory_reader.clear_native_crop()
