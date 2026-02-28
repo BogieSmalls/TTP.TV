@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { PixelInterpreter } from '../src/vision/PixelInterpreter.js';
 import { TILE_DEFS, MAX_TEMPLATES } from '../src/vision/tileDefs.js';
+
+const DARK_TILE_THRESHOLD = 0.3;
 import type { RawPixelState } from '../src/vision/types.js';
 
 function makeRaw(overrides: Partial<RawPixelState> = {}): RawPixelState {
@@ -80,6 +82,57 @@ describe('PixelInterpreter', () => {
       const raw = interp.interpret(makeRaw({ hudScores }));
       expect(raw.hasMasterKey).toBe(true);
     });
+
+    it('does NOT detect master key when key tile is dark (all scores below threshold)', () => {
+      // All scores = 0.1 (below DARK_TILE_THRESHOLD = 0.3) → tile inactive → no master key
+      const hudScores = new Array(TILE_DEFS.length * MAX_TEMPLATES).fill(0.1);
+      const raw = interp.interpret(makeRaw({ hudScores }));
+      expect(raw.hasMasterKey).toBe(false);
+    });
+
+    it('does NOT detect master key when a digit scores confidently', () => {
+      const hudScores = new Array(TILE_DEFS.length * MAX_TEMPLATES).fill(0);
+      const key0idx = TILE_DEFS.findIndex(t => t.id === 'key_0');
+      hudScores[key0idx * MAX_TEMPLATES + 3] = 0.85; // digit '3' at 0.85 → confident
+      const raw = interp.interpret(makeRaw({ hudScores }));
+      expect(raw.hasMasterKey).toBe(false);
+    });
+  });
+
+  it('caps rupees at 255', () => {
+    const hudScores = new Array(TILE_DEFS.length * MAX_TEMPLATES).fill(0);
+    // rupee_0=idx0, rupee_1=idx1, rupee_2=idx2, digit '9'=tmpl 9
+    hudScores[0 * MAX_TEMPLATES + 9] = 0.8;
+    hudScores[1 * MAX_TEMPLATES + 9] = 0.8;
+    hudScores[2 * MAX_TEMPLATES + 9] = 0.8; // 999 → capped to 255
+    const raw = interp.interpret(makeRaw({ hudScores }));
+    expect(raw.rupees).toBe(255);
+  });
+
+  it('reads dungeon level from dungeon_lvl tile', () => {
+    const hudScores = new Array(TILE_DEFS.length * MAX_TEMPLATES).fill(0);
+    const lvlIdx = TILE_DEFS.findIndex(t => t.id === 'dungeon_lvl');
+    hudScores[lvlIdx * MAX_TEMPLATES + 5] = 0.8; // digit '5'
+    const raw = interp.interpret(makeRaw({ hudScores }));
+    expect(raw.dungeonLevel).toBe(5);
+  });
+
+  it('returns 0 dungeonLevel when score below threshold', () => {
+    const hudScores = new Array(TILE_DEFS.length * MAX_TEMPLATES).fill(0);
+    const lvlIdx = TILE_DEFS.findIndex(t => t.id === 'dungeon_lvl');
+    hudScores[lvlIdx * MAX_TEMPLATES + 5] = 0.4; // below 0.5 threshold
+    const raw = interp.interpret(makeRaw({ hudScores }));
+    expect(raw.dungeonLevel).toBe(0);
+  });
+
+  it('sets triforceCollected=1 when goldPixelCount > 15', () => {
+    const raw = interp.interpret(makeRaw({ goldPixelCount: 16 }));
+    expect(raw.triforceCollected).toBe(1);
+  });
+
+  it('sets triforceCollected=0 when goldPixelCount <= 15', () => {
+    const raw = interp.interpret(makeRaw({ goldPixelCount: 15 }));
+    expect(raw.triforceCollected).toBe(0);
   });
 
   it('passes through floorItems from raw state', () => {

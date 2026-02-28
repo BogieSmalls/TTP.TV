@@ -74,7 +74,7 @@ export class PixelInterpreter {
     if (tileIdx < 0) return false;
     // Check if tile is "active" (any score is non-zero)
     const baseOffset = tileIdx * MAX_TEMPLATES;
-    const tileActive = DIGITS.some((_, i) => (raw.hudScores[baseOffset + i] ?? 0) > 0);
+    const tileActive = DIGITS.some((_, i) => (raw.hudScores[baseOffset + i] ?? 0) >= DARK_TILE_THRESHOLD);
     if (!tileActive) return false;
     const maxScore = DIGITS.reduce((m, _, ti) =>
       Math.max(m, raw.hudScores[baseOffset + ti] ?? 0), 0);
