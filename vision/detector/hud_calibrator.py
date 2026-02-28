@@ -7,6 +7,7 @@ pixel coordinates to canonical frame pixel coordinates.
 
 from __future__ import annotations
 from dataclasses import dataclass
+import logging
 import numpy as np  # used by anchor detection methods added in Tasks 2-4
 
 
@@ -236,7 +237,6 @@ class HudCalibrator:
                 if life_y is not None:
                     drift = abs(life_y - self.result.nes_to_px(LIFE_NES_X, LIFE_NES_Y)[1])
                     if drift > DRIFT_WARNING_PX:
-                        import logging
                         logging.getLogger(__name__).warning(
                             f'HudCalibrator: LIFE text drifted {drift}px from locked position '
                             f'(frame {frame_num}). Calibration may be stale.')

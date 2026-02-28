@@ -213,3 +213,41 @@ def test_calibrate_scale_y_from_life_glyph():
     frame = _make_gameplay_frame()
     cal.calibrate(frame, frame_num=1)
     assert 0.9 <= cal.result.scale_y <= 1.1
+
+
+def test_calibrate_gameplay_frames_seen_increments_post_lock():
+    """After locking, each calibrate() call increments _gameplay_frames_seen."""
+    cal = HudCalibrator()
+    cal.calibrate(_make_gameplay_frame(), frame_num=1)
+    assert cal.result.locked
+    assert cal._gameplay_frames_seen == 0  # first post-lock call hasn't happened yet
+    cal.calibrate(_make_gameplay_frame(), frame_num=2)
+    assert cal._gameplay_frames_seen == 1
+    cal.calibrate(_make_gameplay_frame(), frame_num=3)
+    assert cal._gameplay_frames_seen == 2
+
+
+def test_calibrate_spot_check_emits_warning_on_drift(caplog):
+    """After SPOT_CHECK_INTERVAL post-lock frames, a drifted LIFE text logs a warning."""
+    import logging as _logging
+    from detector.hud_calibrator import SPOT_CHECK_INTERVAL, DRIFT_WARNING_PX
+
+    cal = HudCalibrator()
+    cal.calibrate(_make_gameplay_frame(), frame_num=1)
+    assert cal.result.locked
+
+    # Build a drifted frame: LIFE text moved down by DRIFT_WARNING_PX + 2 pixels
+    drift_offset = DRIFT_WARNING_PX + 2
+    drifted = _make_gameplay_frame()
+    # Shift LIFE text pixels down: clear original position, repaint lower
+    drifted[40:48, 176:200, :] = 0  # clear original LIFE text
+    drifted[40 + drift_offset:48 + drift_offset, 176:200, 2] = 220
+    drifted[40 + drift_offset:48 + drift_offset, 176:200, 1] = 20
+    drifted[40 + drift_offset:48 + drift_offset, 176:200, 0] = 20
+
+    # Call calibrate SPOT_CHECK_INTERVAL times post-lock with the drifted frame
+    with caplog.at_level(_logging.WARNING, logger='detector.hud_calibrator'):
+        for i in range(SPOT_CHECK_INTERVAL):
+            cal.calibrate(drifted, frame_num=i + 2)
+
+    assert any('drifted' in record.message.lower() for record in caplog.records)
