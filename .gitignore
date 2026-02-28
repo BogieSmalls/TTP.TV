@@ -79,3 +79,4 @@ obs/
 .playwright-mcp/
 .server.pid
 .env.bak
+.worktrees/
