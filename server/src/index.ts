@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer } from 'node:http';
 import { Server as SocketIOServer } from 'socket.io';
+import { WebSocketServer } from 'ws';
 import { resolve, dirname, delimiter } from 'node:path';
 import { config } from './config.js';
 import { logger } from './logger.js';
@@ -32,6 +33,7 @@ import { SeedItemTracker } from './race/SeedItemTracker.js';
 import { ReplayOrchestrator } from './race/ReplayOrchestrator.js';
 import { VodIngestionService } from './knowledge/VodIngestionService.js';
 import { RaceHistoryImporter } from './knowledge/RaceHistoryImporter.js';
+import { VisionWorkerManager } from './vision/VisionWorkerManager.js';
 
 async function main() {
   // ─── Augment PATH with tool directories ───
@@ -95,6 +97,10 @@ async function main() {
   // ─── Vision Manager + Log DB ───
   const visionManager = new VisionManager(config, cropProfileService);
   const visionLogDb = new VisionLogDb(resolve(import.meta.dirname, '../../data/vision-log.db'));
+
+  // ─── Vision Worker Manager (WebGPU browser-side pipeline) ───
+  const visionWorkerManager = new VisionWorkerManager();
+  visionWorkerManager.start().catch(err => logger.error('VisionWorkerManager start failed', { err }));
 
   // ─── Learn Session Manager ───
   const learnManager = new LearnSessionManager(config);
@@ -321,6 +327,9 @@ async function main() {
     commentaryEngine.setRaceContext({ standings });
   });
 
+  // Serve vision-tab static files (browser-side WebGPU pipeline)
+  app.use('/vision-tab', express.static(resolve(import.meta.dirname, '../public/vision-tab')));
+
   // Serve TTS audio files
   app.use('/tts', express.static(ttsManager.getAudioDir()));
 
@@ -500,6 +509,14 @@ async function main() {
   });
   obsController.on('disconnected', () => {
     io.to('dashboard').emit('obs:disconnected');
+  });
+
+  // ─── Vision Tab WebSocket Endpoint ───
+  const visionWss = new WebSocketServer({ server: httpServer, path: '/vision-tab-ws' });
+  visionWss.on('connection', (tabWs, req) => {
+    const url = new URL(req.url!, `http://localhost`);
+    const racerId = url.searchParams.get('racerId');
+    if (racerId) visionWorkerManager.registerTabWebSocket(racerId, tabWs as unknown as WebSocket);
   });
 
   // ─── Start HTTP Server ───

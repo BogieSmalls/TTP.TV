@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "tsc && xcopy /E /I /Y src\\public dist\\public",
     "test": "vitest run",
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@types/ws": "^8.18.1",
     "better-sqlite3": "^12.6.2",
     "dotenv": "^16.4.0",
     "express": "^5.1.0",
@@ -22,6 +23,7 @@
     "tmi.js": "^1.8.5",
     "uuid": "^11.1.0",
     "winston": "^3.17.0",
+    "ws": "^8.19.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
