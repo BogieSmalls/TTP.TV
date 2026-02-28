@@ -516,6 +516,7 @@ async function main() {
   visionWss.on('connection', (tabWs, req) => {
     const url = new URL(req.url!, `http://localhost`);
     const racerId = url.searchParams.get('racerId');
+    // ws package type vs Node.js 22 built-in global WebSocket — structurally identical at runtime
     if (racerId) visionWorkerManager.registerTabWebSocket(racerId, tabWs as unknown as WebSocket);
   });
 

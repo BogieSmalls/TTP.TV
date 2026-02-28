@@ -21,8 +21,10 @@ video.src = streamUrl;
 video.play().catch(e => console.error('video play failed:', e));
 
 let frameCount = 0;
+let lastFrameTime = Date.now();
 
 function onVideoFrame(now, metadata) {
+  lastFrameTime = Date.now();
   frameCount++;
   // Heartbeat every 30 frames
   if (frameCount % 30 === 0 && ws.readyState === WebSocket.OPEN) {
@@ -40,6 +42,7 @@ function sendPreview() {
   const ctx = canvas.getContext('2d');
   ctx.drawImage(video, 0, 0, 320, 240);
   canvas.toBlob(blob => {
+    if (!blob) return;
     blob.arrayBuffer().then(buf => {
       if (ws.readyState === WebSocket.OPEN) ws.send(buf);
     });
@@ -47,8 +50,6 @@ function sendPreview() {
 }
 
 // Stall detection: re-fetch stream URL if no frames for 5s
-let lastFrameTime = Date.now();
-video.requestVideoFrameCallback(() => { lastFrameTime = Date.now(); });
 setInterval(() => {
   if (Date.now() - lastFrameTime > 5000) {
     console.warn('stream stall detected — reloading');
