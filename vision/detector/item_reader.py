@@ -123,7 +123,13 @@ class ItemReader:
         Returns the item whose color indicator matches.
         """
         gray = cv2.cvtColor(tile, cv2.COLOR_BGR2GRAY)
-        bright = gray > self._threshold
+        # Use a higher threshold for color analysis than for shape matching.
+        # On Twitch-compressed streams, dark HUD background bleeds into
+        # slightly blue values (e.g. grayscale 15-25). At threshold=10 these
+        # artifact pixels add blue bias, making red candle look blue.
+        # Threshold 40 isolates actual sprite pixels from background noise.
+        color_thresh = max(self._threshold, 40)
+        bright = gray > color_thresh
         if np.sum(bright) < 5:
             return item_a  # not enough data, keep shape winner
 

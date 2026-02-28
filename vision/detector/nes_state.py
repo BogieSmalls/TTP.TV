@@ -203,11 +203,13 @@ class NesStateDetector:
             # wrong scale factors. Calibration is skipped here; it runs
             # when native frames are available via set_native_frame().
 
-            # Read dungeon level first — it can correct screen_type for bright
-            # dungeons that the brightness-based classifier mistakes for overworld
-            state.dungeon_level = self.hud_reader.read_dungeon_level(
+            # Read dungeon level — can correct screen_type for bright dungeons.
+            # read_dungeon_level() now includes a saturation check to reject
+            # overworld minimap pixels (colored) vs real LEVEL text (white).
+            raw_level = self.hud_reader.read_dungeon_level(
                 frame, self.digit_reader)
-            if state.dungeon_level > 0 and state.screen_type != 'dungeon':
+            if raw_level > 0:
+                state.dungeon_level = raw_level
                 state.screen_type = 'dungeon'
 
             hearts = self.hud_reader.read_hearts(frame)

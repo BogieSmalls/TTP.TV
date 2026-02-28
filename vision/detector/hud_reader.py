@@ -404,7 +404,7 @@ class HudReader:
             dy_adj = 1
         return self._read_counter_tiles(frame, digit_reader,
                                          self.BOMB_DIGIT_COLS, self.BOMB_DIGIT_ROW,
-                                         dy_adj)
+                                         dy_adj, min_score=0.35)
 
     def read_dungeon_level(self, frame: np.ndarray, digit_reader: 'DigitReader') -> int:
         """Read dungeon level (1-9) from the LEVEL-X text in the HUD.
@@ -419,7 +419,18 @@ class HudReader:
             rw = region.shape[1]
             # Verify LEVEL text: check brightness of left 2/3
             left_w = max(1, rw * 2 // 3)
-            if np.mean(region[:, :left_w]) < 20:
+            left_region = region[:, :left_w]
+            if np.mean(left_region) < 50:
+                return 0
+            # White text check: LEVEL text is bright white (V > 180).
+            # Overworld minimap has gray squares (V ≈ 100-150, S ≈ 0)
+            # that pass brightness and saturation checks. Requiring truly
+            # white pixels (V > 180, S < 40) distinguishes real text from
+            # medium-gray minimap fill.
+            hsv = cv2.cvtColor(left_region, cv2.COLOR_BGR2HSV)
+            white_mask = (hsv[:, :, 2] > 180) & (hsv[:, :, 1] < 40)
+            total_px = left_region.shape[0] * left_region.shape[1]
+            if np.sum(white_mask) < total_px * 0.15:
                 return 0
             # Digit is in the right portion of the LEVEL-X text.
             # Extract the right third (with overlap) and slide digit templates.
@@ -431,7 +442,7 @@ class HudReader:
                                   interpolation=cv2.INTER_NEAREST)
             if gray.shape[1] < 8:
                 return 0
-            best_score = 0.15
+            best_score = 0.3
             best_digit = 0
             for d in range(1, 10):
                 tmpl = digit_reader.template_grays.get(d)
@@ -445,20 +456,35 @@ class HudReader:
             return best_digit
 
         # Grid-based fallback
-        # Verify LEVEL text is present by checking brightness in the text area
+        # Verify LEVEL text is present by checking brightness in the text area.
+        # Threshold 50 filters out the overworld minimap (same pixel region,
+        # but dimmer than the bright white LEVEL text in dungeons).
         text_start_col = self.LEVEL_TEXT_COLS[0]
         text_end_col = self.LEVEL_TEXT_COLS[1]
         rx = text_start_col * 8 + self.grid_dx
         ry = self.LEVEL_TEXT_ROW * 8 + self.grid_dy
         rw = (text_end_col + 1 - text_start_col) * 8
         text_region = self._extract(frame, rx, ry, rw, 8)
-        if np.mean(text_region) < 20:
+        if np.mean(text_region) < 50:
+            return 0
+        # White text check: LEVEL text is bright white (V > 180).
+        # Overworld minimap has gray squares (V ≈ 100-150, S ≈ 0)
+        # that pass brightness and saturation checks. Requiring truly
+        # white pixels (V > 180, S < 40) distinguishes real text from
+        # medium-gray minimap fill.
+        hsv = cv2.cvtColor(text_region, cv2.COLOR_BGR2HSV)
+        white_mask = (hsv[:, :, 2] > 180) & (hsv[:, :, 1] < 40)
+        total_px = text_region.shape[0] * text_region.shape[1]
+        if np.sum(white_mask) < total_px * 0.15:
             return 0
 
-        # Extract and read the level digit (padded for sliding match)
+        # Extract and read the level digit; require minimum match score
+        # to avoid false reads from noise. The brightness threshold above
+        # is the primary guard (overworld minimap is <5 brightness);
+        # this score check is secondary defense.
         digit_tile = self._tile(frame, self.LEVEL_DIGIT_COL, self.LEVEL_DIGIT_ROW)
-        result = digit_reader.read_digit(digit_tile)
-        if result is not None and 1 <= result <= 9:
+        result, score = digit_reader.read_digit_with_score(digit_tile)
+        if result is not None and 1 <= result <= 9 and score >= 0.3:
             return result
         return 0
 
@@ -665,9 +691,10 @@ class HudReader:
             return 0
 
         gray = np.mean(minimap, axis=2)
-        threshold = float(np.max(gray)) * 0.8
-        if threshold < 80:
+        max_bright = float(np.max(gray))
+        if max_bright < 60:
             return 0
+        threshold = max(max_bright * 0.7, 50)
 
         bright_mask = (gray > threshold).astype(np.uint8)
         bright_coords = np.argwhere(bright_mask)
@@ -795,6 +822,6 @@ class HudReader:
         brightness = np.mean(tile)
         red_ratio = self._red_ratio(tile)
         # NES empty heart containers are white/grey outlines with
-        # brightness ~50+. Threshold at 25 avoids false positives
-        # from faint background noise (~10-15 brightness).
-        return brightness > 25 and red_ratio < 0.1
+        # brightness ~50+. Threshold at 40 avoids false positives
+        # from resize artifacts (~30-40 brightness).
+        return brightness > 40 and red_ratio < 0.1

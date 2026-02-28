@@ -62,11 +62,27 @@ class TestRule1MaxHeartsIncrease:
         result = v.validate(make_state(hearts_max=3), 1)
         assert result.hearts_max == 5
 
-    def test_max_hearts_increase_is_accepted(self):
+    def test_max_hearts_increase_by_one_accepted_after_streak(self):
+        """hearts_max +1 requires 2 consecutive frames (streak=2)."""
         v = GameLogicValidator()
         prime(v, make_state(hearts_max=3))
-        result = v.validate(make_state(hearts_max=5), 1)
-        assert result.hearts_max == 5
+        # Frame 1: streak starts, blocked
+        result = v.validate(make_state(hearts_max=4), 1)
+        assert result.hearts_max == 3
+        # Frame 2: streak met, accepted
+        result = v.validate(make_state(hearts_max=4), 2)
+        assert result.hearts_max == 4
+
+    def test_max_hearts_jump_capped_to_plus_one(self):
+        """Jump from 3->16 in one reading gets capped to 4 even after streak."""
+        v = GameLogicValidator()
+        prime(v, make_state(hearts_max=3))
+        # Frame 1: streak blocks
+        result = v.validate(make_state(hearts_max=16), 1)
+        assert result.hearts_max == 3
+        # Frame 2: streak passes, but +1 cap limits to 4
+        result = v.validate(make_state(hearts_max=16), 2)
+        assert result.hearts_max == 4
 
     def test_max_hearts_unchanged_is_accepted(self):
         v = GameLogicValidator()
@@ -81,10 +97,23 @@ class TestRule1MaxHeartsIncrease:
         result = v.validate(make_state(hearts_max=3), 1)
         assert result.hearts_max == 3
 
+    def test_single_frame_spike_blocked_by_streak(self):
+        """A single frame of hearts_max=16 is rejected, next frame resets."""
+        v = GameLogicValidator()
+        prime(v, make_state(hearts_max=3))
+        # Spike frame
+        result = v.validate(make_state(hearts_max=16), 1)
+        assert result.hearts_max == 3
+        # Normal frame — streak resets
+        result = v.validate(make_state(hearts_max=3), 2)
+        assert result.hearts_max == 3
+
     def test_max_hearts_decrease_records_anomaly(self):
         v = GameLogicValidator()
         prime(v, make_state(hearts_max=5))
+        # Need 2 consecutive frames to pass streak, then Rule 1 catches it
         v.validate(make_state(hearts_max=3), 1)
+        v.validate(make_state(hearts_max=3), 2)
         assert any(a['detector'] == 'hearts_max' for a in v.get_anomalies())
 
 
@@ -557,7 +586,9 @@ class TestGameEvents:
 
     def test_heart_container_event_fires_on_max_hearts_increase(self):
         prime(self.v, make_state(screen_type='overworld', hearts_max=3))
+        # Streak requires 2 consecutive frames before accepting hearts_max change
         self.v.validate(make_state(screen_type='overworld', hearts_max=4), 1)
+        self.v.validate(make_state(screen_type='overworld', hearts_max=4), 2)
         events = [e['event'] for e in self.v.game_events]
         assert 'heart_container' in events
 
@@ -606,7 +637,9 @@ class TestAnomalyTracking:
     def test_rule_violation_records_warning_anomaly(self):
         v = GameLogicValidator()
         prime(v, make_state(hearts_max=5))
+        # Streak requires 2 consecutive frames before value change is accepted
         v.validate(make_state(hearts_max=3), 1)
+        v.validate(make_state(hearts_max=3), 2)
         anomalies = v.get_anomalies()
         assert len(anomalies) > 0
         assert any(a['severity'] == 'warning' for a in anomalies)
