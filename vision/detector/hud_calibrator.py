@@ -89,3 +89,72 @@ class HudCalibrator:
         top_y = int(row_indices[0]) + self._LIFE_SCAN_Y1
         bot_y = int(row_indices[-1]) + self._LIFE_SCAN_Y1
         return top_y, max(1, bot_y - top_y + 1)
+
+    def _detect_gameplay_boundary(self, frame: np.ndarray,
+                                  life_y: int) -> int | None:
+        """Scan downward from life_y+20 until first non-black row. Returns y."""
+        start_y = min(life_y + 20, 239)
+        for y in range(start_y, min(start_y + 60, 240)):
+            row = frame[y, :, :]
+            if float(np.mean(row)) > 15:
+                return y
+        return None
+
+    def _detect_b_a_borders(self, frame: np.ndarray
+                             ) -> tuple[int | None, int | None]:
+        """Detect left edges of B-item and A-item blue borders."""
+        # B-item is at NES x≈128, y≈16-31; A-item at x≈152, y≈24-39
+        b_x = a_x = None
+        region_y1, region_y2 = 8, 48
+        for x in range(115, 170):
+            col = frame[region_y1:region_y2, x, :]
+            b_ch = col[:, 0].astype(int)
+            r_ch = col[:, 2].astype(int)
+            g_ch = col[:, 1].astype(int)
+            blue_pixels = int(np.sum((b_ch > 150) & (b_ch > r_ch * 2) & (b_ch > g_ch * 2)))
+            if blue_pixels >= 4:
+                if b_x is None and x < 142:
+                    b_x = x
+                elif b_x is not None and a_x is None and x > b_x + 10:
+                    a_x = x
+        return b_x, a_x
+
+    def _detect_digit_rows(self, frame: np.ndarray
+                           ) -> tuple[int | None, int | None, int | None]:
+        """Find rupee, key, bomb digit row centers from bright pixel scan."""
+        # Digit columns are in x range 80-140; scan that strip for bright rows
+        strip = frame[8:56, 80:140, :]
+        brightness = np.mean(strip, axis=(1, 2))
+        rupee_y = key_y = bomb_y = None
+        # Rupee row ≈ y=16-23 → strip rows 8-15
+        for y_off in range(7, 17):
+            if brightness[y_off] > 30:
+                rupee_y = y_off + 8
+                break
+        # Key row ≈ y=32-39 → strip rows 24-31
+        for y_off in range(23, 33):
+            if brightness[y_off] > 30:
+                key_y = y_off + 8
+                break
+        # Bomb row ≈ y=40-47 → strip rows 32-39
+        for y_off in range(32, 42):
+            if brightness[y_off] > 30:
+                bomb_y = y_off + 8
+                break
+        return rupee_y, key_y, bomb_y
+
+    def _detect_minimap_gray_rect(self, frame: np.ndarray
+                                   ) -> tuple[int, int, int, int] | None:
+        """Find mid-gray rectangle in minimap region (x=16-79, y=12-52)."""
+        region = frame[12:52, 16:80, :]
+        r = region[:, :, 2].astype(int)
+        g = region[:, :, 1].astype(int)
+        b = region[:, :, 0].astype(int)
+        gray_mask = ((r >= 80) & (r <= 140) & (g >= 80) & (g <= 140)
+                     & (b >= 80) & (b <= 140)).astype(np.uint8)
+        if gray_mask.sum() < 20:
+            return None
+        coords = np.argwhere(gray_mask)
+        y0, x0 = int(coords[:, 0].min()), int(coords[:, 1].min())
+        y1, x1 = int(coords[:, 0].max()), int(coords[:, 1].max())
+        return x0 + 16, y0 + 12, x1 - x0 + 1, y1 - y0 + 1

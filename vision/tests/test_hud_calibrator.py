@@ -95,3 +95,58 @@ def test_detect_life_text_ratio_filter_rejects_orange():
     frame[40:48, 176:200, 1] = 60   # G (too high — fails ratio)
     frame[40:48, 176:200, 0] = 10   # B
     assert cal._detect_life_text(frame) == (None, None)
+
+
+def test_detect_gameplay_boundary():
+    """First non-black row below HUD should be detected."""
+    cal = HudCalibrator()
+    frame = _make_frame()
+    # Paint colored game area starting at y=68 (slightly offset)
+    frame[68:, :, 1] = 80  # green tint in game area
+    boundary_y = cal._detect_gameplay_boundary(frame, life_y=40)
+    assert boundary_y is not None
+    assert 66 <= boundary_y <= 72
+
+
+def test_detect_b_a_borders():
+    """Blue border pixels at B and A item positions should be found."""
+    cal = HudCalibrator()
+    frame = _make_frame()
+    # Paint blue at B-item left border (x≈128, y=16-31)
+    frame[16:32, 128:130, 0] = 200  # B channel (index 0 in BGR)
+    frame[16:32, 128:130, 1] = 20
+    frame[16:32, 128:130, 2] = 20
+    # Paint blue at A-item left border (x≈152, y=24-39)
+    frame[24:40, 152:154, 0] = 200
+    frame[24:40, 152:154, 1] = 20
+    frame[24:40, 152:154, 2] = 20
+    b_x, a_x = cal._detect_b_a_borders(frame)
+    assert b_x is not None and 126 <= b_x <= 130
+    assert a_x is not None and 150 <= a_x <= 154
+
+
+def test_detect_digit_rows():
+    """Bright pixel rows at rupee/key/bomb positions should be found."""
+    cal = HudCalibrator()
+    frame = _make_frame()
+    # Paint bright white at digit row positions
+    frame[16:24, 96:130, :] = 200   # rupee digits
+    frame[32:40, 100:134, :] = 200  # key digits
+    frame[40:48, 100:134, :] = 200  # bomb digits
+    rupee_y, key_y, bomb_y = cal._detect_digit_rows(frame)
+    assert rupee_y is not None and 16 <= rupee_y <= 24
+    assert key_y is not None and 32 <= key_y <= 40
+    assert bomb_y is not None and 40 <= bomb_y <= 48
+
+
+def test_detect_minimap_gray_rect():
+    """Mid-gray rectangle in minimap region should be detected."""
+    cal = HudCalibrator()
+    frame = _make_frame()
+    # Paint gray at minimap position (x=16-79, y=12-52)
+    frame[12:52, 16:80, :] = 110
+    rect = cal._detect_minimap_gray_rect(frame)
+    assert rect is not None
+    x, y, w, h = rect
+    assert abs(x - 16) <= 4
+    assert abs(y - 12) <= 4
