@@ -651,6 +651,16 @@ export function createApiRoutes(ctx: RouteContext): Router {
     res.json({ status: 'stopped', racerId });
   });
 
+  router.post('/vision/:racerId/reset', (req, res) => {
+    ctx.visionManager.resetState(req.params.racerId);
+    res.json({ status: 'reset', racerId: req.params.racerId });
+  });
+
+  router.get('/vision/:racerId/verification', (req, res) => {
+    const v = ctx.visionManager.getVerificationStatus(req.params.racerId);
+    res.json({ racerId: req.params.racerId, verification: v });
+  });
+
   // ─── Vision VOD (ad-hoc VOD → VisionLab) ───
 
   router.post('/vision-vod/start', async (req, res) => {

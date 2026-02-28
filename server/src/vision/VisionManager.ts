@@ -161,14 +161,7 @@ export class VisionManager {
     const stateOnly = { ...partialState };
     delete stateOnly.game_events;
 
-    // Debounce: hearts_max can never decrease (safety net for Rule 1)
     const existing = this.stateCache.get(racerId) || { lastUpdated: 0 };
-    const prevMax = existing.hearts_max as number | undefined;
-    const curMax = stateOnly.hearts_max as number | undefined;
-    if (prevMax && prevMax > 0 && curMax !== undefined && curMax < prevMax) {
-      stateOnly.hearts_max = prevMax;
-    }
-
     const merged = { ...existing, ...stateOnly, lastUpdated: Date.now() };
     this.stateCache.set(racerId, merged);
 
@@ -222,6 +215,15 @@ export class VisionManager {
       flaggedBad: v.flaggedBad,
       ratio: v.totalUpdates > 0 ? v.gameplayCount / v.totalUpdates : 0,
     };
+  }
+
+  /**
+   * Reset the cached state for a racer (clears stale data without stopping the bridge).
+   */
+  resetState(racerId: string): void {
+    this.stateCache.delete(racerId);
+    this.verification.delete(racerId);
+    logger.info(`[VisionManager] State reset for ${racerId}`);
   }
 
   /**

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Eye, Play, Square } from 'lucide-react';
+import { Eye, Play, Square, RotateCcw } from 'lucide-react';
 import { useSocketEvent } from '../hooks/useSocket';
 import { SectionHeader } from '../ui';
 
@@ -61,8 +61,10 @@ const ITEMS = [
 ];
 
 // Decode NES map_position byte → 1-based {col, row}
+// Returns null for 0 (undetected) or negative values — position byte 0 = C1,R1 is
+// indistinguishable from "not detected", so we treat 0 as unknown.
 function decodePosition(mapPos: number | null, screenType: string): { col: number; row: number } | null {
-  if (mapPos == null || mapPos < 0) return null;
+  if (mapPos == null || mapPos <= 0) return null;
   if (screenType === 'overworld' || screenType === 'cave') {
     return { col: (mapPos % 16) + 1, row: Math.floor(mapPos / 16) + 1 };
   }
@@ -88,6 +90,7 @@ export default function VisionLab() {
   const [visitedRooms, setVisitedRooms] = useState<Record<string, Set<string>>>({});
   const [deathTimes, setDeathTimes] = useState<Record<string, number[]>>({});
   const [frameTicks, setFrameTicks] = useState<Record<string, number>>({});
+  const [verification, setVerification] = useState<Record<string, { promoted: boolean; flaggedBad: boolean; ratio: number } | null>>({});
   const nextId = useRef(0);
 
   // VOD session form
@@ -102,13 +105,39 @@ export default function VisionLab() {
 
   useEffect(() => {
     fetch('/api/pool').then(r => r.json()).then((data: PoolRacer[]) => {
-      setPool(data);
-      if (data.length > 0) {
-        setVodProfileId(data[0].profile_id);
-        setVodRacerId(data[0].name.toLowerCase());
+      const sorted = [...data].sort((a, b) => a.name.localeCompare(b.name));
+      setPool(sorted);
+      if (sorted.length > 0) {
+        setVodProfileId(sorted[0].profile_id);
+        setVodRacerId(sorted[0].name.toLowerCase());
       }
     }).catch(() => {});
   }, []);
+
+  const resetRacer = useCallback(async (racerId: string) => {
+    await fetch(`/api/vision/${racerId}/reset`, { method: 'POST' }).catch(() => {});
+    setStates(prev => { const n = { ...prev }; delete n[racerId]; return n; });
+    setVisitedRooms(prev => { const n = { ...prev }; delete n[racerId]; return n; });
+    setDeathTimes(prev => { const n = { ...prev }; delete n[racerId]; return n; });
+    setVerification(prev => { const n = { ...prev }; delete n[racerId]; return n; });
+  }, []);
+
+  // Poll verification status for active racers every 5s
+  useEffect(() => {
+    const racerIds = Object.keys(states);
+    if (racerIds.length === 0) return;
+    const poll = () => {
+      racerIds.forEach(id => {
+        fetch(`/api/vision/${id}/verification`)
+          .then(r => r.json())
+          .then(d => setVerification(prev => ({ ...prev, [id]: d.verification })))
+          .catch(() => {});
+      });
+    };
+    poll();
+    const interval = setInterval(poll, 5000);
+    return () => clearInterval(interval);
+  }, [Object.keys(states).join(',')]);
 
   const startVod = async () => {
     if (!vodUrl || !vodProfileId || !vodRacerId) return;
@@ -320,6 +349,7 @@ export default function VisionLab() {
             const sbadge = screenTypeBadge(s.screen_type);
             const isOverworld = s.screen_type === 'overworld' || s.screen_type === 'cave';
             const isDungeon = s.screen_type === 'dungeon';
+            const verif = verification[s.racerId];
 
             return (
               <div
@@ -327,12 +357,25 @@ export default function VisionLab() {
                 className="rounded-lg p-4 border space-y-3"
                 style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
               >
-                {/* Header: name + screen type badge + death counter */}
+                {/* Header: name + badges + reset */}
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
                     {s.racerId}
                   </h3>
                   <div className="flex items-center gap-2 shrink-0">
+                    {/* Crop calibration status */}
+                    {verif && (
+                      <span
+                        className="text-xs px-2 py-0.5 rounded font-medium"
+                        style={{
+                          background: verif.flaggedBad ? 'rgba(239,68,68,0.2)' : verif.promoted ? 'rgba(52,211,153,0.15)' : 'var(--bg-elevated)',
+                          color: verif.flaggedBad ? 'var(--danger)' : verif.promoted ? 'var(--success)' : 'var(--text-muted)',
+                        }}
+                        title={`Crop calibration: ${(verif.ratio * 100).toFixed(0)}% gameplay frames`}
+                      >
+                        {verif.flaggedBad ? '⚠ bad crop' : verif.promoted ? '✓ crop ok' : `~${(verif.ratio * 100).toFixed(0)}%`}
+                      </span>
+                    )}
                     {totalDeaths > 0 && (
                       <span
                         className="text-xs px-2 py-0.5 rounded font-medium"
@@ -350,6 +393,14 @@ export default function VisionLab() {
                     >
                       {s.screen_type === 'dungeon' ? `DUNGEON-${s.dungeon_level}` : s.screen_type.toUpperCase()}
                     </span>
+                    <button
+                      onClick={() => resetRacer(s.racerId)}
+                      title="Reset cached state"
+                      className="p-1 rounded hover:bg-white/10 transition-colors"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      <RotateCcw size={12} />
+                    </button>
                   </div>
                 </div>
 
@@ -357,7 +408,7 @@ export default function VisionLab() {
                 <img
                   src={`/api/vision/${s.racerId}/frame?t=${frameTicks[s.racerId] ?? 0}`}
                   alt="vision frame"
-                  style={{ width: '100%', borderRadius: 4, imageRendering: 'pixelated', display: 'block' }}
+                  style={{ width: '100%', maxHeight: '180px', objectFit: 'contain', borderRadius: 4, imageRendering: 'pixelated', display: 'block', background: '#000' }}
                 />
 
                 {/* Visual minimap */}
