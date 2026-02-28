@@ -1,8 +1,8 @@
 """Unit tests for floor item detection pipeline.
 
 Tests FloorItemDetector (detection accuracy, NMS, frame-diff guard,
-shape twin disambiguation) and FloorItemTracker (item_drop, item_pickup,
-room entry grace period).
+shape twin disambiguation) and FloorItemTracker (item_drop, item_obtained,
+item_seen_missed, room entry grace period).
 
 Uses synthetic compositing on dungeon golden frames for controlled
 ground truth — same approach validated in explore_floor_items.py.
@@ -431,8 +431,8 @@ class TestFloorItemTracker:
         assert len(drops) == 1
         assert drops[0]['item'] == 'key'
 
-    def test_item_pickup_after_gone(self):
-        """Tracked item must be absent for 3+ frames before item_pickup."""
+    def test_item_obtained_after_gone(self):
+        """Tracked item must be absent for 3+ frames before item_obtained."""
         tracker = FloorItemTracker()
         fi = self.make_floor_items(('key', 100, 80))
 
@@ -447,9 +447,9 @@ class TestFloorItemTracker:
             events = tracker.process([], 'dungeon', 1, 34, i)
             events_all.extend(events)
 
-        pickups = [e for e in events_all if e['event'] == 'item_pickup']
-        assert len(pickups) == 1
-        assert pickups[0]['item'] == 'key'
+        obtained = [e for e in events_all if e['event'] == 'item_obtained']
+        assert len(obtained) == 1
+        assert obtained[0]['item'] == 'key'
 
     def test_room_entry_grace_suppresses_drop(self):
         """Items present when entering a room should not fire item_drop."""
@@ -466,7 +466,7 @@ class TestFloorItemTracker:
         assert drops == [], "Items present at room entry should not trigger drop"
 
     def test_room_change_resets_tracking(self):
-        """Changing rooms resets all tracked items."""
+        """Changing rooms emits item_seen_missed for tracked items."""
         tracker = FloorItemTracker()
         fi = self.make_floor_items(('key', 100, 80))
 
@@ -476,8 +476,10 @@ class TestFloorItemTracker:
 
         # Room 2 (map_position changes): new grace period
         events = tracker.process([], 'dungeon', 1, 50, 6)
-        assert not any(e['event'] == 'item_pickup' for e in events), \
-            "Room change should not emit pickup for items in previous room"
+        assert any(e['event'] == 'item_seen_missed' for e in events), \
+            "Room change should emit item_seen_missed for tracked items"
+        assert not any(e['event'] == 'item_obtained' for e in events), \
+            "Room change should not emit item_obtained"
 
     def test_non_gameplay_clears_state(self):
         """Switching to subscreen/title clears tracking."""
@@ -546,8 +548,36 @@ class TestFloorItemTracker:
             events = tracker.process([], 'dungeon', 1, 34, i)
             all_events.extend(events)
 
-        pickups = [e for e in all_events if e['event'] == 'item_pickup']
-        assert len(pickups) == 1, f"Expected 1 pickup, got {len(pickups)}"
+        pickups = [e for e in all_events if e['event'] == 'item_obtained']
+        assert len(pickups) == 1, f"Expected 1 item_obtained, got {len(pickups)}"
+
+    def test_item_obtained_event_when_same_room(self):
+        """Item disappearing while room unchanged -> item_obtained."""
+        tracker = FloorItemTracker()
+        fi = self.make_floor_items(('bow', 100, 80))
+        # Confirm item over CONFIRM_FRAMES
+        for i in range(tracker._CONFIRM_FRAMES + tracker._ROOM_ENTRY_GRACE + 1):
+            tracker.process(fi, 'dungeon', 1, 42, frame_number=i)
+        # Now remove item (gone streak) — same room
+        events_all = []
+        for i in range(tracker._GONE_FRAMES + 1):
+            evts = tracker.process([], 'dungeon', 1, 42, frame_number=100 + i)
+            events_all.extend(evts)
+        names = [e['event'] for e in events_all]
+        assert 'item_obtained' in names
+        assert 'item_seen_missed' not in names
+
+    def test_item_seen_missed_when_room_changes(self):
+        """Item disappearing due to room change -> item_seen_missed."""
+        tracker = FloorItemTracker()
+        fi = self.make_floor_items(('bow', 100, 80))
+        for i in range(tracker._CONFIRM_FRAMES + tracker._ROOM_ENTRY_GRACE + 1):
+            tracker.process(fi, 'dungeon', 1, 42, frame_number=i)
+        # Room changes — item no longer visible (player left)
+        events = tracker.process([], 'dungeon', 1, 99, frame_number=100)
+        names = [e['event'] for e in events]
+        assert 'item_seen_missed' in names
+        assert 'item_obtained' not in names
 
 
 # =============================================================================
@@ -575,7 +605,7 @@ class TestFloorItemGameLogicIntegration:
         assert drops[0]['item'] == 'key'
 
     def test_pickup_event_in_validator(self):
-        """item_pickup should appear in game_events from validate()."""
+        """item_obtained should appear in game_events from validate()."""
         v = GameLogicValidator()
         fi = [{'name': 'bomb', 'x': 150, 'y': 60, 'score': 0.9}]
 
@@ -587,7 +617,7 @@ class TestFloorItemGameLogicIntegration:
         for i in range(130, 140):
             v.validate(make_state(floor_items=[]), frame_number=i)
 
-        pickups = [e for e in v.game_events if e['event'] == 'item_pickup']
+        pickups = [e for e in v.game_events if e['event'] == 'item_obtained']
         assert len(pickups) >= 1
         assert pickups[0]['item'] == 'bomb'
 

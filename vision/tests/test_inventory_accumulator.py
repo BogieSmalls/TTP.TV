@@ -127,11 +127,11 @@ class TestStaircaseItem:
 
 
 class TestFloorItemPickup:
-    """item_pickup events add items."""
+    """item_obtained events add items."""
 
     def test_floor_pickup(self, acc):
         acc.process_event({
-            'event': 'item_pickup',
+            'event': 'item_obtained',
             'item': 'magic_key',
             'dungeon_level': 7,
         })
@@ -194,7 +194,7 @@ class TestFullSequence:
             {'event': 'b_item_change', 'description': 'B-item: boomerang (was bomb)'},
             {'event': 'staircase_item_acquired', 'item': 'raft', 'dungeon_level': 4},
             {'event': 'b_item_change', 'description': 'B-item: blue_candle (was boomerang)'},
-            {'event': 'item_pickup', 'item': 'power_bracelet', 'dungeon_level': 2},
+            {'event': 'item_obtained', 'item': 'power_bracelet', 'dungeon_level': 2},
             {'event': 'b_item_change', 'description': 'B-item: red_candle (was blue_candle)'},
             {'event': 'sword_upgrade', 'description': 'Picked up White Sword'},
         ]

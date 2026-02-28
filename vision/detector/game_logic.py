@@ -129,8 +129,9 @@ class StaircaseItemTracker:
 class FloorItemTracker:
     """Tracks items on dungeon/overworld floors across frames.
 
-    Emits item_drop events when new items appear and item_pickup events
-    when tracked items disappear.
+    Emits item_drop events when new items appear, item_obtained events
+    when tracked items disappear in the same room, and item_seen_missed
+    events when the player leaves a room with tracked items still present.
 
     Handles room transitions gracefully: items visible on the first few
     frames after entering a room are treated as pre-existing (no item_drop
@@ -169,7 +170,7 @@ class FloorItemTracker:
             frame_number: Current frame number for event timestamps.
 
         Returns:
-            List of event dicts (item_drop / item_pickup).
+            List of event dicts (item_drop / item_obtained / item_seen_missed).
         """
         events: list[dict] = []
 
@@ -178,9 +179,19 @@ class FloorItemTracker:
             self._reset()
             return events
 
-        # Detect room change — reset tracking and start grace period
+        # Detect room change — emit item_seen_missed, reset tracking, start grace period
         screen_key = (screen_type, dungeon_level, map_position)
         if screen_key != self._prev_screen_key:
+            # Emit item_seen_missed for all tracked items (player left room)
+            for item in self._tracked:
+                events.append({
+                    'frame': frame_number,
+                    'event': 'item_seen_missed',
+                    'description': f'Player left room with floor item: {item["name"]}',
+                    'item': item['name'],
+                    'x': item['x'], 'y': item['y'],
+                    'dungeon_level': dungeon_level,
+                })
             self._reset()
             self._prev_screen_key = screen_key
             self._grace_remaining = self._ROOM_ENTRY_GRACE
@@ -213,7 +224,7 @@ class FloorItemTracker:
                 if gone >= self._GONE_FRAMES:
                     events.append({
                         'frame': frame_number,
-                        'event': 'item_pickup',
+                        'event': 'item_obtained',
                         'description': f'Picked up floor item: {item["name"]}',
                         'item': item['name'],
                         'x': item['x'], 'y': item['y'],

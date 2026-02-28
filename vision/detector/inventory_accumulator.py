@@ -3,7 +3,7 @@
 Z1R uses a SWAP subscreen that the InventoryReader cannot parse, so
 ``GameState.items`` is always ``{}`` during Z1R races.  This class builds
 a cumulative inventory by observing game events emitted by the
-GameLogicValidator (b_item_change, staircase_item_acquired, item_pickup,
+GameLogicValidator (b_item_change, staircase_item_acquired, item_obtained,
 sword_upgrade) and inferring which items the player has obtained.
 
 Upgrade chains are respected — seeing ``red_candle`` implies
@@ -78,7 +78,7 @@ class InventoryAccumulator:
         Recognised event types:
         - ``b_item_change`` — the new B-item is now known
         - ``staircase_item_acquired`` — item picked up from staircase pedestal
-        - ``item_pickup`` — floor item picked up
+        - ``item_obtained`` — floor item picked up (player stayed in room)
         - ``sword_upgrade`` — sword level increased (handled via description)
         """
         etype = event.get('event', '')
@@ -91,7 +91,7 @@ class InventoryAccumulator:
             if item:
                 self._add_item(item)
 
-        elif etype == 'item_pickup':
+        elif etype == 'item_obtained':
             item = event.get('item')
             if item:
                 self._add_item(item)
