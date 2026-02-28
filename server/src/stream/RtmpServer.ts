@@ -44,8 +44,7 @@ export class RtmpServer {
 
     this.nms.run();
     logger.info(`RTMP server started on port ${this.config.rtmp.port}`);
-    logger.info(`HTTP-FLV server started on port ${this.config.rtmp.httpPort}`);
-    logger.info(`HLS output available on port ${this.config.mediaServer.http.port}`);
+    logger.info(`HLS output available at http://localhost:${this.config.mediaServer.http.port}/live/<key>/index.m3u8`);
   }
 
   stop(): void {
