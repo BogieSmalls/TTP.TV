@@ -91,6 +91,52 @@ class ScreenClassifier:
     def __init__(self, grid_offset: tuple[int, int] = (1, 2), life_row: int = 5):
         self.grid_dx, self.grid_dy = grid_offset
         self._life_row = life_row
+        # Native crop support — set per-frame via set_native_crop()
+        self._native_crop: np.ndarray | None = None
+        self._scale_x: float = 1.0
+        self._scale_y: float = 1.0
+
+    def set_native_crop(self, crop_frame: np.ndarray,
+                        scale_x: float, scale_y: float) -> None:
+        """Provide the native-resolution crop for this frame.
+
+        When set, all pixel reads use stream-space coordinates computed from
+        scale_x = crop_w/256, scale_y = crop_h/240. Dramatically improves
+        reliability by avoiding Twitch H.264 DCT artifacts that smear 8×8 tiles
+        when the frame is downscaled to 256×240.
+
+        Args:
+            crop_frame: The NES game region at native stream resolution
+                        (shape: crop_h × crop_w, BGR).
+            scale_x:    crop_w / 256.0
+            scale_y:    crop_h / 240.0
+        """
+        self._native_crop = crop_frame
+        self._scale_x = scale_x
+        self._scale_y = scale_y
+
+    def clear_native_crop(self) -> None:
+        """Release the native crop reference (call after each frame)."""
+        self._native_crop = None
+
+    def _af(self, canonical: np.ndarray) -> np.ndarray:
+        """Return active frame: native crop if set, else canonical."""
+        return self._native_crop if self._native_crop is not None else canonical
+
+    def _sc(self, nes_x: int, nes_y: int,
+            nes_w: int = 8, nes_h: int = 8) -> tuple[int, int, int, int]:
+        """Scale NES pixel coords to active-frame coords.
+
+        Returns (x, y, w, h) in the active frame's coordinate space.
+        When native crop is set, multiplies by scale factors.
+        When no native crop, returns NES coords unchanged (1:1).
+        """
+        if self._native_crop is not None:
+            return (round(nes_x * self._scale_x),
+                    round(nes_y * self._scale_y),
+                    max(1, round(nes_w * self._scale_x)),
+                    max(1, round(nes_h * self._scale_y)))
+        return nes_x, nes_y, nes_w, nes_h
 
     def classify(self, frame: np.ndarray) -> str:
         """Classify the current screen.
@@ -101,49 +147,29 @@ class ScreenClassifier:
         Returns:
             One of: 'overworld', 'dungeon', 'cave', 'subscreen', 'death', 'title', 'transition'
         """
-        # PRIMARY CHECK: Is the gameplay HUD present?
-        # The "-LIFE-" (or "-ROAR-") text at a fixed HUD position is the most
-        # reliable indicator of a gameplay screen. If present, the screen is
-        # NEVER a subscreen, title, death menu, or transition.
         if self._has_life_text(frame):
             return self._classify_gameplay(frame)
 
-        # No HUD — determine which non-gameplay screen type
-        game_area = frame[64:240, :, :]
-        full_brightness = float(np.mean(frame))
+        src = self._af(frame)
+        hud_h = round(64 * self._scale_y) if self._native_crop is not None else 64
+        game_area = src[hud_h:, :, :]
+        full_brightness = float(np.mean(src))
 
-        # Nearly black = transition (screen scrolling or fade)
         if full_brightness < TRANSITION_BRIGHTNESS_MAX:
             return 'transition'
-
-        # Death animation: heavy red flash across game area
         if self._is_death_flash(game_area):
             return 'death'
-
-        # Subscreen: HUD shifted down (inventory, item-get, triforce collection).
-        # Must check BEFORE death menu — subscreens have dark bg + white text
-        # that can fool the death menu detector.
         if self._has_shifted_hud(frame):
             return 'subscreen'
-
-        # Death menu: CONTINUE/SAVE/RETRY on black background
         if self._is_death_menu(frame):
             return 'death'
-
-        # Title screen: very dark top area (no HUD at all)
         if self._is_title(frame):
             return 'title'
-
-        # Low brightness with some content = probably transition
         if full_brightness < LOW_BRIGHTNESS_MAX:
             return 'transition'
-
-        # Moderate brightness without HUD — could be subscreen or unknown
-        # Check for inventory-like layout (dark background with scattered bright spots)
         game_brightness = float(np.mean(game_area))
         if game_brightness < SUBSCREEN_DARK_GAME_MAX:
             return 'subscreen'
-
         return 'unknown'
 
     def _has_life_text(self, frame: np.ndarray) -> bool:
@@ -152,20 +178,21 @@ class ScreenClassifier:
         This is the most reliable gameplay indicator. The text is at the
         detected LIFE row (typically row 4-5), col 22.
         """
-        y = self._life_row * 8 + self.grid_dy
-        x = 22 * 8 + self.grid_dx
-        if y + 8 > frame.shape[0] or x + 8 > frame.shape[1]:
+        src = self._af(frame)
+        x, y, w, h = self._sc(22 * 8 + self.grid_dx, self._life_row * 8 + self.grid_dy)
+        if y + h > src.shape[0] or x + w > src.shape[1]:
             return False
-        tile = frame[y:y + 8, x:x + 8]
+        tile = src[y:y + h, x:x + w]
         avg = np.mean(tile, axis=(0, 1))
         r, g, b = float(avg[2]), float(avg[1]), float(avg[0])
         return r > RED_CHANNEL_MIN and r > g * RED_TO_GREEN_RATIO and r > b * RED_TO_BLUE_RATIO
 
     def _classify_gameplay(self, frame: np.ndarray) -> str:
         """Classify a frame known to have the gameplay HUD."""
-        game_area = frame[64:240, :, :]
+        src = self._af(frame)
+        hud_h = round(64 * self._scale_y) if self._native_crop is not None else 64
+        game_area = src[hud_h:, :, :]
         avg_brightness = float(np.mean(game_area))
-
         if avg_brightness < DUNGEON_BRIGHTNESS_MAX:
             return 'dungeon'
         elif avg_brightness < CAVE_BRIGHTNESS_MAX:
@@ -188,19 +215,20 @@ class ScreenClassifier:
         This screen has white text centered on a black background, with a small
         red heart icon. No HUD is present.
         """
-        full_brightness = float(np.mean(frame))
+        src = self._af(frame)
+        full_brightness = float(np.mean(src))
         if full_brightness > DEATH_MENU_BRIGHTNESS_MAX or full_brightness < DEATH_MENU_BRIGHTNESS_MIN:
             return False
-
-        # Check for white pixels in the center area (text region)
-        cy1, cy2 = DEATH_MENU_CENTER_Y
-        cx1, cx2 = DEATH_MENU_CENTER_X
-        center = frame[cy1:cy2, cx1:cx2, :]
+        cy1 = round(DEATH_MENU_CENTER_Y[0] * self._scale_y) if self._native_crop is not None else DEATH_MENU_CENTER_Y[0]
+        cy2 = round(DEATH_MENU_CENTER_Y[1] * self._scale_y) if self._native_crop is not None else DEATH_MENU_CENTER_Y[1]
+        cx1 = round(DEATH_MENU_CENTER_X[0] * self._scale_x) if self._native_crop is not None else DEATH_MENU_CENTER_X[0]
+        cx2 = round(DEATH_MENU_CENTER_X[1] * self._scale_x) if self._native_crop is not None else DEATH_MENU_CENTER_X[1]
+        center = src[cy1:cy2, cx1:cx2, :]
+        if center.size == 0:
+            return False
         center_brightness = float(np.mean(center))
         if center_brightness < DEATH_MENU_CENTER_BRIGHT_MIN or center_brightness > DEATH_MENU_CENTER_BRIGHT_MAX:
             return False
-
-        # Count bright white pixels in center (text characters)
         white_mask = np.mean(center, axis=2) > WHITE_PIXEL_THRESHOLD
         white_ratio = float(np.sum(white_mask)) / (center.shape[0] * center.shape[1])
         return WHITE_RATIO_MIN < white_ratio < WHITE_RATIO_MAX
@@ -210,9 +238,10 @@ class ScreenClassifier:
 
         The title screen has no HUD. The top area is very dark.
         """
-        top = frame[0:TITLE_TOP_ROWS, :, :]
-        avg_top = float(np.mean(top))
-        return avg_top < TITLE_TOP_BRIGHTNESS_MAX
+        src = self._af(frame)
+        top_rows = round(TITLE_TOP_ROWS * self._scale_y) if self._native_crop is not None else TITLE_TOP_ROWS
+        top = src[0:top_rows, :, :]
+        return float(np.mean(top)) < TITLE_TOP_BRIGHTNESS_MAX
 
     def _has_shifted_hud(self, frame: np.ndarray) -> bool:
         """Check if the HUD is shifted down (item-get screen or subscreen scroll).
@@ -225,40 +254,43 @@ class ScreenClassifier:
         Both checks together prevent false positives from intro/story text
         screens which have red text but no minimap.
         """
-        x = 22 * 8 + self.grid_dx
-        if x + 8 > frame.shape[1]:
+        src = self._af(frame)
+        x, _, tw, th = self._sc(22 * 8 + self.grid_dx, 0)
+        if x + tw > src.shape[1]:
             return False
 
-        y_end = min(SHIFTED_HUD_Y_END, frame.shape[0] - 8)
+        y_start = round(SHIFTED_HUD_Y_START * self._scale_y) if self._native_crop is not None else SHIFTED_HUD_Y_START
+        y_end   = round(SHIFTED_HUD_Y_END   * self._scale_y) if self._native_crop is not None else SHIFTED_HUD_Y_END
+        y_end = min(y_end, src.shape[0] - th)
+        step = max(1, round(self._scale_y)) if self._native_crop is not None else 1
 
-        # Step 1: Find LIFE text (N+ consecutive strong-red rows)
         life_y = None
         consecutive_red = 0
-        for y in range(SHIFTED_HUD_Y_START, y_end):
-            tile = frame[y:y + 8, x:x + 8]
+        for y in range(y_start, y_end, step):
+            tile = src[y:y + th, x:x + tw]
             avg = np.mean(tile, axis=(0, 1))
             r, g, b = float(avg[2]), float(avg[1]), float(avg[0])
             if r > RED_CHANNEL_MIN and r > g * RED_TO_GREEN_RATIO and r > b * RED_TO_BLUE_RATIO:
                 consecutive_red += 1
                 if consecutive_red >= CONSECUTIVE_RED_ROWS_MIN and life_y is None:
-                    life_y = y - (CONSECUTIVE_RED_ROWS_MIN - 1)
+                    life_y = y - (CONSECUTIVE_RED_ROWS_MIN - 1) * step
             else:
                 consecutive_red = 0
 
         if life_y is None:
             return False
 
-        # Step 2: Check for minimap grey rectangle near LIFE text.
-        map_y = max(0, life_y - MINIMAP_Y_ABOVE_LIFE)
-        map_y_end = min(frame.shape[0], life_y + MINIMAP_Y_BELOW_LIFE)
-        if map_y_end - map_y < 8:
+        map_y_above = round(MINIMAP_Y_ABOVE_LIFE * self._scale_y) if self._native_crop is not None else MINIMAP_Y_ABOVE_LIFE
+        map_y_below = round(MINIMAP_Y_BELOW_LIFE * self._scale_y) if self._native_crop is not None else MINIMAP_Y_BELOW_LIFE
+        mx1 = round(MINIMAP_X_START * self._scale_x) if self._native_crop is not None else MINIMAP_X_START
+        mx2 = round(MINIMAP_X_END   * self._scale_x) if self._native_crop is not None else MINIMAP_X_END
+        map_y   = max(0, life_y - map_y_above)
+        map_y2  = min(src.shape[0], life_y + map_y_below)
+        if map_y2 - map_y < th or mx2 <= mx1:
             return False
-
-        map_region = frame[map_y:map_y_end, MINIMAP_X_START:MINIMAP_X_END]
+        map_region = src[map_y:map_y2, mx1:mx2]
         avg_map = np.mean(map_region, axis=(0, 1))
         channel_spread = float(max(avg_map) - min(avg_map))
         brightness = float(np.mean(avg_map))
-        if channel_spread < MINIMAP_CHANNEL_SPREAD_MAX and MINIMAP_BRIGHTNESS_MIN < brightness < MINIMAP_BRIGHTNESS_MAX:
-            return True
-
-        return False
+        return (channel_spread < MINIMAP_CHANNEL_SPREAD_MAX
+                and MINIMAP_BRIGHTNESS_MIN < brightness < MINIMAP_BRIGHTNESS_MAX)
