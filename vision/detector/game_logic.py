@@ -856,3 +856,47 @@ class GameLogicValidator:
             'description': description,
             'severity': severity,
         })
+
+
+class RaceItemTracker:
+    """Tracks where each item lives on the seed — a seed knowledge map.
+
+    Records "for each item in the game, where is it?" as detected by vision.
+    Combined with PlayerItemTracker this answers "did Bogie get the silver
+    arrows from Level 5?"
+
+    Vocabulary: Vision *detects* floor items. This tracker records that an
+    item was *seen* at a location; separately records if it was *obtained*.
+    """
+
+    def __init__(self) -> None:
+        # item_name -> {'map_position': int, 'first_seen_frame': int, 'obtained': bool}
+        self._locations: dict[str, dict] = {}
+
+    def item_seen(self, item: str, map_position: int, frame: int) -> None:
+        """Record that vision detected this item at a map position."""
+        if item not in self._locations:
+            self._locations[item] = {
+                'map_position': map_position,
+                'first_seen_frame': frame,
+                'obtained': False,
+            }
+        # Update location if seen at same position (idempotent)
+        # Don't overwrite if already marked obtained from a previous sighting
+
+    def item_obtained(self, item: str, frame: int) -> None:
+        """Mark an item as obtained by the player (confirmed pickup)."""
+        if item in self._locations:
+            self._locations[item]['obtained'] = True
+        # If we see an obtained event without a prior sighting, still record it
+        # (handles edge cases where floor detection missed the initial appearance)
+        else:
+            self._locations[item] = {
+                'map_position': 0,  # unknown location
+                'first_seen_frame': frame,
+                'obtained': True,
+            }
+
+    def get_locations(self) -> dict[str, dict]:
+        """Return the full seed knowledge map."""
+        return dict(self._locations)
