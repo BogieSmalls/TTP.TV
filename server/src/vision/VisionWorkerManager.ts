@@ -1,5 +1,6 @@
 import { Browser, chromium, Page } from 'playwright';
 import { RacerConfig, RawPixelState } from './types.js';
+// WebSocket is the Node.js 22 built-in global — no import needed (consistent with RaceMonitor.ts)
 
 export class VisionWorkerManager {
   private browser: Browser | null = null;
@@ -19,6 +20,9 @@ export class VisionWorkerManager {
 
   async addRacer(config: RacerConfig): Promise<void> {
     if (!this.browser) throw new Error('VisionWorkerManager not started');
+    if (this.tabs.has(config.racerId)) {
+      throw new Error(`Racer ${config.racerId} is already being monitored`);
+    }
     const page = await this.browser.newPage();
     page.on('console', msg => console.log(`[vision:${config.racerId}]`, msg.text()));
     page.on('pageerror', err => console.error(`[vision:${config.racerId}] ERROR`, err));
@@ -38,7 +42,8 @@ export class VisionWorkerManager {
       entry.ws = ws;
       ws.addEventListener('message', (event) => {
         try {
-          const msg = JSON.parse(event.data as string);
+          const raw = typeof event.data === 'string' ? event.data : String(event.data);
+          const msg = JSON.parse(raw);
           if (msg.type === 'calibration') {
             this.emit('calibration', msg);
           } else {
@@ -59,7 +64,7 @@ export class VisionWorkerManager {
   }
 
   async stop(): Promise<void> {
-    for (const [id] of this.tabs) await this.removeRacer(id);
+    for (const id of Array.from(this.tabs.keys())) await this.removeRacer(id);
     await this.browser?.close();
     this.browser = null;
   }
