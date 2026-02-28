@@ -6,6 +6,8 @@ export class VisionWorkerManager {
   private browser: Browser | null = null;
   private tabs = new Map<string, { page: Page; ws: WebSocket | null }>();
   private onStateCallback: ((state: RawPixelState) => void) | null = null;
+  private monitoredRacers = new Set<string>();
+  private featuredRacers = new Set<string>();
 
   async start(): Promise<void> {
     this.browser = await chromium.launch({
@@ -74,6 +76,22 @@ export class VisionWorkerManager {
     if (entry?.ws?.readyState === WebSocket.OPEN) {
       entry.ws.send(JSON.stringify(message));
     }
+  }
+
+  setFeatured(racerIds: string[]): void {
+    this.featuredRacers = new Set(racerIds);
+  }
+
+  getMonitoredCount(): number {
+    return this.tabs.size;
+  }
+
+  getFeaturedIds(): string[] {
+    return [...this.featuredRacers];
+  }
+
+  isFeatured(racerId: string): boolean {
+    return this.featuredRacers.has(racerId);
   }
 
   // Minimal EventEmitter-like for calibration events
