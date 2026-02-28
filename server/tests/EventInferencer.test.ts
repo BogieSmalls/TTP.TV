@@ -37,15 +37,16 @@ describe('EventInferencer', () => {
     expect(events.some(e => e.type === 'dungeon_first_visit')).toBe(false);
   });
 
-  it('death has 30-frame cooldown per racer', () => {
+  it('death has 900-frame cooldown per racer', () => {
     const inf = new EventInferencer('racer1');
-    // Simulate death event
-    inf.update(state({ heartsCurrentStable: 0 }), 0, 1);
-    inf.update(state({ heartsCurrentStable: 0 }), 33, 2);
-    const first = inf.update(state({ heartsCurrentStable: 0 }), 66, 3);
-    // Second death within cooldown
-    const second = inf.update(state({ heartsCurrentStable: 0 }), 99, 4);
-    const deathCount = [...first, ...second].filter(e => e.type === 'death').length;
-    expect(deathCount).toBeLessThanOrEqual(1);
+    // First death: transition from hearts > 0 to 0
+    inf.update(state({ heartsCurrentStable: 6 }), 0, 1);     // frame 1: alive
+    const first = inf.update(state({ heartsCurrentStable: 0 }), 33, 2);  // frame 2: death transition
+    expect(first.some(e => e.type === 'death')).toBe(true);  // first death fires
+
+    // Second death within cooldown window (frames 3-4, well within 900 frame cooldown)
+    inf.update(state({ heartsCurrentStable: 6 }), 66, 3);    // frame 3: revived
+    const second = inf.update(state({ heartsCurrentStable: 0 }), 99, 4);  // frame 4: transition again
+    expect(second.some(e => e.type === 'death')).toBe(false); // second suppressed by cooldown
   });
 });
