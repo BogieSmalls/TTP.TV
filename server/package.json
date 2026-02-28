@@ -17,6 +17,7 @@
     "mysql2": "^3.17.0",
     "node-media-server": "^4.2.4",
     "obs-websocket-js": "^5.0.7",
+    "playwright": "^1.58.2",
     "socket.io": "^4.8.3",
     "tmi.js": "^1.8.5",
     "uuid": "^11.1.0",
