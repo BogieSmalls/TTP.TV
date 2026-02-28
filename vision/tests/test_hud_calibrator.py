@@ -1,5 +1,6 @@
 import numpy as np
 from detector.hud_calibrator import CalibrationResult, HudCalibrator
+from detector.hud_reader import HudReader
 
 
 def _make_frame() -> np.ndarray:
@@ -251,3 +252,30 @@ def test_calibrate_spot_check_emits_warning_on_drift(caplog):
             cal.calibrate(drifted, frame_num=i + 2)
 
     assert any('drifted' in record.message.lower() for record in caplog.records)
+
+
+def test_hud_reader_accepts_calibrator():
+    """HudReader can be constructed with a calibrator param."""
+    cal = HudCalibrator()
+    reader = HudReader(calibrator=cal)
+    assert reader is not None
+
+
+def test_read_hearts_uses_calibrated_life_y():
+    """With a locked calibrator, heart rows derive from life_y, not landmark."""
+    cal = HudCalibrator()
+    # Manually lock with life_y=40 (standard NES position)
+    cal.result = CalibrationResult(
+        anchor_x=0.0, anchor_y=0.0, scale_x=1.0, scale_y=1.0,
+        confidence=1.0, locked=True, source_frame=0)
+    cal._anchors.life_y = 40
+
+    reader = HudReader(calibrator=cal)
+    frame = np.zeros((240, 256, 3), dtype=np.uint8)
+    # Paint 3 full hearts at heart row 1 (y=48-55, x=176-199)
+    frame[48:56, 176:199, 2] = 200  # red (BGR channel 2)
+    frame[48:56, 176:199, 1] = 30
+    frame[48:56, 176:199, 0] = 30
+    cur, max_h, half = reader.read_hearts(frame)
+    # Should detect at least some hearts (not 0)
+    assert cur >= 1

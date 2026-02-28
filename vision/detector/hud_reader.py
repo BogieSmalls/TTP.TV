@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .digit_reader import DigitReader
     from .item_reader import ItemReader
+    from .hud_calibrator import HudCalibrator
 
 
 # NES Zelda heart colors (approximate BGR values)
@@ -57,7 +58,8 @@ class HudReader:
     LEVEL_TEXT_ROW = 1
 
     def __init__(self, grid_offset: tuple[int, int] = (1, 2), life_row: int = 5,
-                 landmarks: list[dict] | None = None):
+                 landmarks: list[dict] | None = None,
+                 calibrator: 'HudCalibrator | None' = None):
         """Initialize HUD reader.
 
         Args:
@@ -97,6 +99,8 @@ class HudReader:
 
         # LIFE landmark region for robust is_hud_present (set by _apply_landmarks)
         self._life_region = None  # (x, y, w, h) in NES pixel coords, or None
+
+        self._calibrator = calibrator
 
         # When landmarks are available, override positions directly
         if landmarks:
@@ -224,6 +228,16 @@ class HudReader:
         # Landmark path: extract full region, normalize, scan slices
         if self._has_landmark('Hearts'):
             lm = self._get_landmark('Hearts')
+            # If calibrator is locked, derive heart row y from LIFE text position
+            # rather than using the static landmark y (which may be misaligned).
+            # LIFE text is at life_y; heart row 1 starts 8px below it.
+            if (self._calibrator is not None
+                    and self._calibrator.result.locked
+                    and self._calibrator._anchors.life_y is not None):
+                life_y = self._calibrator._anchors.life_y
+                lm = dict(lm)          # don't mutate the stored landmark
+                lm['y'] = life_y + 8  # heart row 1 top
+                lm['h'] = 16          # covers both heart rows
             region = self._extract(frame, lm['x'], lm['y'],
                                    lm['w'], lm['h'])
             # Normalize to standard heart grid: 64px wide (8×8), 16px tall (2 rows)
@@ -273,8 +287,18 @@ class HudReader:
         max_hearts = 0
         has_half = False
 
-        for row_y in [self.HEART_ROW_1_Y + self.grid_dy,
-                      self.HEART_ROW_2_Y + self.grid_dy]:
+        # Use calibrated heart row y if available, otherwise use grid-based y
+        if (self._calibrator is not None
+                and self._calibrator.result.locked
+                and self._calibrator._anchors.life_y is not None):
+            life_y = self._calibrator._anchors.life_y
+            heart_row1_y = life_y + 8
+            heart_row2_y = life_y + 16
+        else:
+            heart_row1_y = self.HEART_ROW_1_Y + self.grid_dy
+            heart_row2_y = self.HEART_ROW_2_Y + self.grid_dy
+
+        for row_y in [heart_row1_y, heart_row2_y]:
             for i in range(8):  # max 8 hearts per row
                 x = self.HEART_START_X + self.grid_dx + i * self.HEART_SPACING  # no row shift for x
                 if x + 8 > 256:
@@ -336,6 +360,24 @@ class HudReader:
             first_tile = self._tile(frame, self.KEY_DIGIT_COLS[0], self.KEY_DIGIT_ROW)
 
         first_d, first_score = digit_reader.read_digit_with_score(first_tile)
+
+        # dy+1 fallback: on streams with a non-integer vertical scale (e.g.
+        # 4.5× for 1080p), some HUD rows sit 1px below the global grid offset.
+        # Before declaring Master Key, check if shifting +1 gives a confident
+        # read — if so, use that offset for the full counter read too.
+        dy_adj = 0
+        if not self._has_landmark('Keys') \
+                and (first_d is None or first_score < self._DIGIT_CONFIDENT_SCORE) \
+                and float(np.mean(first_tile)) > 20:
+            x = self.KEY_DIGIT_COLS[0] * 8 + self.grid_dx
+            y = self.KEY_DIGIT_ROW * 8 + self.grid_dy + 1
+            if y + 8 <= 240:
+                adj_tile = self._extract(frame, x, y, 8, 8)
+                adj_d, adj_score = digit_reader.read_digit_with_score(adj_tile)
+                if adj_score > first_score:
+                    first_tile, first_d, first_score = adj_tile, adj_d, adj_score
+                    dy_adj = 1
+
         # Master Key "A": bright tile with no confident digit match.
         # Case 1: "A" is so different it matches nothing above 0.15 → first_d is None.
         # Case 2: "A" coincidentally matches "0" at ~0.58 (below _DIGIT_CONFIDENT_SCORE).
@@ -349,7 +391,8 @@ class HudReader:
                                             self.KEY_DIGIT_COLS)
         else:
             count = self._read_counter_tiles(frame, digit_reader,
-                                              self.KEY_DIGIT_COLS, self.KEY_DIGIT_ROW)
+                                              self.KEY_DIGIT_COLS, self.KEY_DIGIT_ROW,
+                                              dy_adj)
         return count, False
 
     def read_bombs(self, frame: np.ndarray, digit_reader: 'DigitReader') -> int:
@@ -358,8 +401,21 @@ class HudReader:
             lm = self._get_landmark('Bombs')
             return self._read_counter_at_y(frame, digit_reader, lm['y'],
                                            self.BOMB_DIGIT_COLS)
+        # dy+1 fallback: the bomb row can sit 1px below the global grid offset
+        # on streams with non-integer vertical scale (e.g. 4.5× for 1080p).
+        # Check confidence of primary read; if low, retry with dy+1.
+        x = self.BOMB_DIGIT_COLS[0] * 8 + self.grid_dx
+        y = self.BOMB_DIGIT_ROW * 8 + self.grid_dy
+        primary_tile = self._extract(frame, x, y, 8, 8)
+        _, primary_score = digit_reader.read_digit_with_score(primary_tile)
+        dy_adj = 0
+        if primary_score < self._DIGIT_CONFIDENT_SCORE \
+                and float(np.mean(primary_tile)) > 20 \
+                and y + 1 + 8 <= 240:
+            dy_adj = 1
         return self._read_counter_tiles(frame, digit_reader,
-                                         self.BOMB_DIGIT_COLS, self.BOMB_DIGIT_ROW)
+                                         self.BOMB_DIGIT_COLS, self.BOMB_DIGIT_ROW,
+                                         dy_adj)
 
     def read_dungeon_level(self, frame: np.ndarray, digit_reader: 'DigitReader') -> int:
         """Read dungeon level (1-9) from the LEVEL-X text in the HUD.
@@ -495,9 +551,10 @@ class HudReader:
             y = self.B_ITEM_Y + self.grid_dy
             x = self.B_ITEM_X + self.grid_dx
             # Extract a region larger than the sprite for sliding template match.
-            # The actual sprite is 8x16 inside the box. We extract 16x24 to
-            # give the template room to slide and find the best alignment.
-            region = self._extract(frame, x, y, 16, 24)
+            # The actual sprite is 8x16. We extract 10x24: 2px of horizontal
+            # slide room while keeping the right blue HUD border out of frame
+            # (border starts ~12px from B_ITEM_X and pollutes color analysis).
+            region = self._extract(frame, x, y, 10, 24)
         if float(np.mean(region)) < 10:
             return None
 
@@ -651,7 +708,8 @@ class HudReader:
     # ─── Internal helpers ───
 
     def _read_counter_at_y(self, frame: np.ndarray, digit_reader: 'DigitReader',
-                           lm_y: int, cols: list[int]) -> int:
+                           lm_y: int, cols: list[int],
+                           min_score: float = 0.5) -> int:
         """Read a multi-digit counter at grid-aligned columns and a landmark y position.
 
         Uses lm_y directly (the pixel-measured landmark position) without snapping
@@ -660,6 +718,10 @@ class HudReader:
         ratio ROMs), producing wrong digit reads. Landmark column constants
         (RUPEE_DIGIT_COLS etc.) are defined in absolute NES tile space, so
         adding grid_dx would over-shift the extraction window.
+
+        min_score filters out weak template matches from adjacent HUD icons
+        (e.g. the rupee x icon at col 12 which can match digit shapes at ~0.3).
+        Real digit matches on calibrated streams score 0.7-0.9.
 
         Uses max-channel brightness for the dark-tile skip so that single-hue
         digits (e.g. blue-channel-only) are not incorrectly skipped.
@@ -670,24 +732,39 @@ class HudReader:
             tile = self._extract(frame, x, lm_y, 8, 8)
             if np.mean(np.max(tile, axis=2)) < 10:
                 continue
-            d = digit_reader.read_digit(tile)
-            if d is not None:
+            d, score = digit_reader.read_digit_with_score(tile)
+            if d is not None and score >= min_score:
                 digits.append(d)
         if not digits:
             return 0
         return int(''.join(str(d) for d in digits))
 
     def _read_counter_tiles(self, frame: np.ndarray, digit_reader: 'DigitReader',
-                            cols: list[int], row: int) -> int:
-        """Read a multi-digit counter from tile positions (grid-based fallback)."""
+                            cols: list[int], row: int, dy_adj: int = 0,
+                            min_score: float = 0.5) -> int:
+        """Read a multi-digit counter from tile positions (grid-based fallback).
+
+        dy_adj offsets the extraction by that many NES pixels relative to
+        grid_dy — used when a specific HUD row is known to sit 1px above or
+        below the global grid offset (e.g. the bomb row on 4.5× scale streams).
+
+        min_score filters out weak template matches caused by adjacent HUD
+        icons (e.g. the rupee "×" icon at col 12 which weakly matches "2").
+        Real digit matches score 0.7-1.0; icon false matches score ~0.4.
+        """
         digits = []
         for col in cols:
-            tile = self._tile(frame, col, row)
+            if dy_adj:
+                x = col * 8 + self.grid_dx
+                y = row * 8 + self.grid_dy + dy_adj
+                tile = self._extract(frame, x, y, 8, 8)
+            else:
+                tile = self._tile(frame, col, row)
             gray = cv2.cvtColor(tile, cv2.COLOR_BGR2GRAY)
             if np.mean(gray) < 10:
                 continue
-            d = digit_reader.read_digit(tile)
-            if d is not None:
+            d, score = digit_reader.read_digit_with_score(tile)
+            if d is not None and score >= min_score:
                 digits.append(d)
 
         if not digits:
