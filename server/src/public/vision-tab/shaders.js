@@ -1,0 +1,64 @@
+export const AGGREGATE_SHADER = /* wgsl */`
+struct Calibration {
+  crop_x: f32, crop_y: f32,
+  scale_x: f32, scale_y: f32,
+  grid_dx: f32, grid_dy: f32,
+  video_w: f32, video_h: f32,
+}
+
+struct AggregateResult {
+  brightness: atomic<i32>,      // game area mean brightness * 1000 (fixed point)
+  red_at_life: atomic<i32>,     // red ratio at LIFE text * 1000
+  gold_pixels: atomic<i32>,     // count of gold pixels in triforce region
+}
+
+@group(0) @binding(0) var source: texture_external;
+@group(0) @binding(1) var src_sampler: sampler;
+@group(0) @binding(2) var<uniform> calib: Calibration;
+@group(0) @binding(3) var<storage, read_write> result: AggregateResult;
+
+fn nes_to_uv(nes_x: f32, nes_y: f32) -> vec2<f32> {
+  return vec2<f32>(
+    (calib.crop_x + (nes_x + calib.grid_dx) * calib.scale_x) / calib.video_w,
+    (calib.crop_y + (nes_y + calib.grid_dy) * calib.scale_y) / calib.video_h,
+  );
+}
+
+// Pass A: game area brightness (NES rows 64-240, cols 0-256, sampled 4x sparse)
+@compute @workgroup_size(16, 16)
+fn brightness_pass(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let nes_x = f32(gid.x * 4u);       // step 4 NES pixels for speed
+  let nes_y = 64.0 + f32(gid.y * 4u);
+  if nes_x >= 256.0 || nes_y >= 240.0 { return; }
+  let uv = nes_to_uv(nes_x, nes_y);
+  let c = textureSampleBaseClampToEdge(source, src_sampler, uv);
+  let luma = i32((c.r * 0.299 + c.g * 0.587 + c.b * 0.114) * 1000.0);
+  atomicAdd(&result.brightness, luma);
+}
+
+// Pass B: red ratio at LIFE text tile (NES col 22, row 5 = x=176, y=40)
+@compute @workgroup_size(8, 8)
+fn red_pass(@builtin(global_invocation_id) gid: vec3<u32>) {
+  if gid.x >= 8u || gid.y >= 8u { return; }
+  let nes_x = 176.0 + f32(gid.x);
+  let nes_y = 40.0 + f32(gid.y);
+  let uv = nes_to_uv(nes_x, nes_y);
+  let c = textureSampleBaseClampToEdge(source, src_sampler, uv);
+  // red ratio: r > 50/255 AND r > 2*g AND r > 2*b
+  let is_red = select(0, 1000, c.r > 0.196 && c.r > c.g * 2.0 && c.r > c.b * 2.0);
+  atomicAdd(&result.red_at_life, is_red);
+}
+
+// Pass C: gold pixels in triforce region (subscreen area y=100-200, x=85-170)
+@compute @workgroup_size(16, 16)
+fn gold_pass(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let nes_x = 85.0 + f32(gid.x);
+  let nes_y = 100.0 + f32(gid.y);
+  if nes_x >= 170.0 || nes_y >= 200.0 { return; }
+  let uv = nes_to_uv(nes_x, nes_y);
+  let c = textureSampleBaseClampToEdge(source, src_sampler, uv);
+  // gold: R>150/255, G>80/255, B<70/255, R>G
+  let is_gold = select(0, 1, c.r > 0.588 && c.g > 0.314 && c.b < 0.275 && c.r > c.g);
+  atomicAdd(&result.gold_pixels, is_gold);
+}
+`;

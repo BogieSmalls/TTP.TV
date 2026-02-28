@@ -2,13 +2,16 @@
 
 import { scanCalibration } from './calibration.js';
 import { GpuContext } from './gpu.js';
+import { VisionPipeline } from './pipeline.js';
 
 const gpu = new GpuContext();
 let gpuReady = false;
+let pipeline = null;
 
 gpu.init().then(() => {
+  pipeline = new VisionPipeline(gpu, calib);
   gpuReady = true;
-  console.log('GPU ready');
+  console.log('GPU ready, pipeline initialized');
 }).catch(e => console.error('GPU init failed:', e));
 
 const params = new URLSearchParams(location.search);
@@ -34,15 +37,29 @@ video.play().catch(e => console.error('video play failed:', e));
 let frameCount = 0;
 let lastFrameTime = Date.now();
 
-function onVideoFrame(now, metadata) {
+async function onVideoFrame(now, metadata) {
   lastFrameTime = Date.now();
   frameCount++;
   // Heartbeat every 30 frames
   if (frameCount % 30 === 0 && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'heartbeat', racerId, frameCount }));
   }
-  if (gpuReady) {
-    // TODO: dispatch compute passes (Task 6)
+  if (gpuReady && pipeline) {
+    const aggregates = await pipeline.processFrame(video);
+    if (frameCount % 30 === 0) {
+      console.log('aggregates:', JSON.stringify(aggregates));
+    }
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'rawState',
+        racerId,
+        frameCount,
+        ...aggregates,
+        hudScores: [],      // populated in Task 7
+        roomScores: [],     // populated in Task 13
+        floorItems: [],     // populated in Task 14
+      }));
+    }
   }
   video.requestVideoFrameCallback(onVideoFrame);
 }
