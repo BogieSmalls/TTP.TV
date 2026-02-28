@@ -69,6 +69,19 @@ class InventoryReader:
     sword-level changes during gameplay instead.
     """
 
+    def __init__(self):
+        self._native_crop = None
+        self._scale_x = 1.0
+        self._scale_y = 1.0
+
+    def set_native_crop(self, crop_frame, scale_x, scale_y):
+        self._native_crop = crop_frame
+        self._scale_x = scale_x
+        self._scale_y = scale_y
+
+    def clear_native_crop(self):
+        self._native_crop = None
+
     def read_items(self, frame: np.ndarray) -> dict:
         """Read all inventory item slots.
 
@@ -99,8 +112,7 @@ class InventoryReader:
 
         return items
 
-    @staticmethod
-    def _is_z1r_swap(frame: np.ndarray) -> bool:
+    def _is_z1r_swap(self, frame: np.ndarray) -> bool:
         """Detect Z1R SWAP layout by checking for red "SWAP" text near top.
 
         The Z1R subscreen shows red "SWAP" text at approximately y=0-18,
@@ -113,7 +125,14 @@ class InventoryReader:
         """
         # Check for red text in top 40 rows, x=24-72
         # SWAP text Y position varies with scroll state (y=0..35)
-        region = frame[0:40, 24:72]
+        src = self._native_crop if self._native_crop is not None else frame
+        if self._native_crop is not None:
+            y_max = round(40 * self._scale_y)
+            x_min = round(24 * self._scale_x)
+            x_max = round(72 * self._scale_x)
+        else:
+            y_max, x_min, x_max = 40, 24, 72
+        region = src[0:y_max, x_min:x_max]
         if region.size == 0:
             return False
         r = region[:, :, 2].astype(float)
