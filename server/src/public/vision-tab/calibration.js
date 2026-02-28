@@ -5,7 +5,6 @@
 const LIFE_NES_Y = 40;
 const NES_B_A_GAP = 32;          // NES pixels between B-item left border and A-item left border
 const MIN_RED_PIXELS = 10;
-const CONFIDENCE_THRESHOLD = 0.85;
 const MAX_SCALE_Y_DIFF = 0.10;   // 10% disagreement between glyph and boundary measurements
 
 export function scanCalibration(imageData, videoWidth, videoHeight) {
