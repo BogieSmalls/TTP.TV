@@ -152,3 +152,64 @@ def test_detect_minimap_gray_rect():
     assert abs(y - 12) <= 4
     assert abs(w - 64) <= 4  # full minimap width ≈ 64px
     assert abs(h - 40) <= 4  # full minimap height ≈ 40px
+
+
+def _make_gameplay_frame() -> np.ndarray:
+    """Frame with all HUD anchors present at standard NES positions."""
+    frame = _make_frame()
+    # LIFE text (red, x=176-199, y=40-47)
+    frame[40:48, 176:200, 2] = 220
+    frame[40:48, 176:200, 1] = 20
+    frame[40:48, 176:200, 0] = 20
+    # Gameplay area (bright below y=64)
+    frame[64:, :, 1] = 80
+    # B-item blue border (x=128, y=16-31)
+    frame[16:32, 128:130, 0] = 200
+    frame[16:32, 128:130, 1] = 20
+    frame[16:32, 128:130, 2] = 20
+    # A-item blue border (x=152, y=24-39)
+    frame[24:40, 152:154, 0] = 200
+    frame[24:40, 152:154, 1] = 20
+    frame[24:40, 152:154, 2] = 20
+    # Digit rows bright (rupee y=16-23, key y=32-39, bomb y=40-47)
+    frame[16:24, 96:130, :] = 200
+    frame[32:40, 100:134, :] = 200
+    frame[40:48, 100:134, :] = 200
+    return frame
+
+
+def test_calibrate_single_high_confidence_frame_locks():
+    """A frame with all anchors should produce confidence > 0.85 and lock."""
+    cal = HudCalibrator()
+    frame = _make_gameplay_frame()
+    cal.calibrate(frame, frame_num=1)
+    assert cal.result.locked is True
+    assert cal.result.confidence >= 0.85
+    assert cal.result.source_frame == 1
+
+
+def test_calibrate_dark_frame_does_not_lock():
+    """A black frame has no anchors; confidence stays low, no lock."""
+    cal = HudCalibrator()
+    cal.calibrate(_make_frame(), frame_num=1)
+    assert cal.result.locked is False
+    assert cal.result.confidence < 0.85
+
+
+def test_calibrate_once_locked_stays_locked():
+    """Once locked, subsequent calls do not change the locked result."""
+    cal = HudCalibrator()
+    frame = _make_gameplay_frame()
+    cal.calibrate(frame, frame_num=1)
+    assert cal.result.locked
+    scale_x_before = cal.result.scale_x
+    cal.calibrate(frame, frame_num=2)
+    assert cal.result.scale_x == scale_x_before  # unchanged
+
+
+def test_calibrate_scale_y_from_life_glyph():
+    """With life_h=8, scale_y should be exactly 1.0."""
+    cal = HudCalibrator()
+    frame = _make_gameplay_frame()
+    cal.calibrate(frame, frame_num=1)
+    assert 0.9 <= cal.result.scale_y <= 1.1

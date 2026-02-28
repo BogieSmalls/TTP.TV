@@ -160,3 +160,83 @@ class HudCalibrator:
         y0, x0 = int(coords[:, 0].min()), int(coords[:, 1].min())
         y1, x1 = int(coords[:, 0].max()), int(coords[:, 1].max())
         return x0 + 16, y0 + 12, x1 - x0 + 1, y1 - y0 + 1
+
+    def calibrate(self, frame: np.ndarray, frame_num: int) -> None:
+        """Detect all anchors, compute scales, lock on first high-confidence result."""
+        # 1. Detect anchors
+        life_y, life_h = self._detect_life_text(frame)
+        self._anchors.life_y = life_y
+        self._anchors.life_h = life_h
+
+        gameplay_y = None
+        if life_y is not None:
+            gameplay_y = self._detect_gameplay_boundary(frame, life_y)
+        self._anchors.gameplay_y = gameplay_y
+
+        b_x, a_x = self._detect_b_a_borders(frame)
+        self._anchors.b_item_x = b_x
+        self._anchors.a_item_x = a_x
+
+        rupee_y, key_y, bomb_y = self._detect_digit_rows(frame)
+        self._anchors.rupee_row_y = rupee_y
+        self._anchors.key_row_y = key_y
+        self._anchors.bomb_row_y = bomb_y
+
+        self._anchors.minimap_gray_rect = self._detect_minimap_gray_rect(frame)
+
+        # 2. Compute scales from available measurements
+        scale_y_measures: list[float] = []
+        if life_h is not None:
+            scale_y_measures.append(life_h / 8.0)
+        if life_y is not None and gameplay_y is not None:
+            scale_y_measures.append((gameplay_y - life_y) / (GAMEPLAY_NES_Y - LIFE_NES_Y))
+        if rupee_y is not None and bomb_y is not None:
+            scale_y_measures.append(
+                (bomb_y - rupee_y) / (BOMB_ROW_NES_Y - RUPEE_ROW_NES_Y))
+
+        scale_x_measures: list[float] = []
+        if b_x is not None and a_x is not None:
+            scale_x_measures.append((a_x - b_x) / B_TO_A_NES_PX)
+
+        # 3. Confidence = fraction of anchor groups detected
+        n_detected = sum([
+            life_y is not None,
+            gameplay_y is not None,
+            b_x is not None and a_x is not None,
+            rupee_y is not None,
+            key_y is not None,
+            bomb_y is not None,
+            self._anchors.minimap_gray_rect is not None,
+        ])
+        confidence = n_detected / 7.0
+
+        # 4. Build candidate result
+        scale_y = float(np.mean(scale_y_measures)) if scale_y_measures else 1.0
+        scale_x = float(np.mean(scale_x_measures)) if scale_x_measures else scale_y
+        anchor_y = (life_y - LIFE_NES_Y * scale_y) if life_y is not None else 0.0
+        anchor_x = (b_x - B_ITEM_NES_X * scale_x) if b_x is not None else 0.0
+
+        # 5. Lock on first high-confidence result; spot-check thereafter
+        if not self.result.locked:
+            if confidence >= HIGH_CONFIDENCE:
+                self.result = CalibrationResult(
+                    anchor_x=anchor_x, anchor_y=anchor_y,
+                    scale_x=scale_x, scale_y=scale_y,
+                    confidence=confidence, locked=True, source_frame=frame_num)
+            else:
+                # Update best-effort (not locked)
+                self.result = CalibrationResult(
+                    anchor_x=anchor_x, anchor_y=anchor_y,
+                    scale_x=scale_x, scale_y=scale_y,
+                    confidence=confidence, locked=False, source_frame=frame_num)
+        else:
+            self._gameplay_frames_seen += 1
+            if self._gameplay_frames_seen - self._last_spot_check >= SPOT_CHECK_INTERVAL:
+                self._last_spot_check = self._gameplay_frames_seen
+                if life_y is not None:
+                    drift = abs(life_y - self.result.nes_to_px(LIFE_NES_X, LIFE_NES_Y)[1])
+                    if drift > DRIFT_WARNING_PX:
+                        import logging
+                        logging.getLogger(__name__).warning(
+                            f'HudCalibrator: LIFE text drifted {drift}px from locked position '
+                            f'(frame {frame_num}). Calibration may be stale.')
