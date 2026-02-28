@@ -495,12 +495,18 @@ def main():
                         (sx1 - cx):(sx1 - cx) + (sx2 - sx1)] = frame[sy1:sy2, sx1:sx2]
         nes_canonical = cv2.resize(nes_region, (256, 240), interpolation=cv2.INTER_NEAREST)
 
-        # Detect with optional temporal smoothing
-        if buffer:
-            raw_state, stable_state = buffer.get_raw_and_stable(nes_canonical)
-        else:
-            raw_state = nes_detector.detect(nes_canonical)
-            stable_state = raw_state
+        # Feed native-resolution frame so HudReader extracts tiles at stream
+        # resolution instead of from the lossy 256×240 canonical downscale.
+        nes_detector.set_native_frame(frame, cx, cy, cw, ch)
+        try:
+            # Detect with optional temporal smoothing
+            if buffer:
+                raw_state, stable_state = buffer.get_raw_and_stable(nes_canonical)
+            else:
+                raw_state = nes_detector.detect(nes_canonical)
+                stable_state = raw_state
+        finally:
+            nes_detector.clear_native_frame()
 
         # Apply game logic validation
         validated = validator.validate(stable_state, frame_count)

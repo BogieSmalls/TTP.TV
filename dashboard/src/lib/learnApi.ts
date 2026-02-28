@@ -75,6 +75,13 @@ export interface LearnSnapshot {
   bItem: string;
   extra: string;
   positionConfidence?: 'high' | 'medium' | 'low';
+  // HUD counters — collected by Python, now surfaced to the dashboard
+  heartsCurrent?: number;
+  heartsMax?: number;
+  rupees?: number;
+  keys?: number;
+  bombs?: number;
+  bombMax?: number;
 }
 
 export interface LearnReport {

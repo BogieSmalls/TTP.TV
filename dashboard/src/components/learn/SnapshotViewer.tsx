@@ -3,8 +3,32 @@ import { ChevronLeft, ChevronRight, Play, Pause, SkipBack, SkipForward } from 'l
 import type { LearnSnapshot } from '../../lib/learnApi';
 import { formatTimestampLong, SCREEN_TYPE_COLORS } from './types';
 
+function formatMapPos(pos: number, dungeonLevel: number): string {
+  if (pos <= 0) return '';
+  if (dungeonLevel > 0) {
+    const col = (pos % 8) + 1;
+    const row = Math.floor(pos / 8) + 1;
+    return `C${col}R${row}`;
+  }
+  const col = (pos % 16) + 1;
+  const row = Math.floor(pos / 16) + 1;
+  return `C${col}R${row}`;
+}
+
+function twitchDeepLink(source: string | undefined, seconds: number): string | null {
+  if (!source) return null;
+  const match = source.match(/twitch\.tv\/videos\/(\d+)/);
+  if (!match) return null;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const t = h > 0 ? `${h}h${m}m${s}s` : m > 0 ? `${m}m${s}s` : `${s}s`;
+  return `https://www.twitch.tv/videos/${match[1]}?t=${t}`;
+}
+
 interface SnapshotViewerProps {
   sessionId: string;
+  sessionSource?: string;
   snapshots: LearnSnapshot[];
   currentIndex: number;
   setCurrentIndex: (i: number) => void;
@@ -17,7 +41,7 @@ interface SnapshotViewerProps {
 const SPEEDS = [1, 2, 5, 10, 20, 50];
 
 export default function SnapshotViewer({
-  sessionId, snapshots, currentIndex, setCurrentIndex,
+  sessionId, sessionSource, snapshots, currentIndex, setCurrentIndex,
   isPlaying, setIsPlaying, playbackSpeed, setPlaybackSpeed,
 }: SnapshotViewerProps) {
   const count = snapshots.length;
@@ -139,6 +163,18 @@ export default function SnapshotViewer({
             </button>
           ))}
         </div>
+        {/* Twitch deep-link */}
+        {twitchDeepLink(sessionSource, snap.videoTimestamp) && (
+          <a
+            href={twitchDeepLink(sessionSource, snap.videoTimestamp)!}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-1 px-1.5 py-0.5 rounded text-[11px] text-purple-300 hover:text-purple-100 hover:bg-white/10 transition-colors"
+            title="Open in Twitch"
+          >
+            ▶ twitch
+          </a>
+        )}
         {/* Metadata inline */}
         <div className="flex items-center gap-2 ml-auto text-xs text-white/50">
           <span className="font-mono text-white/80">{formatTimestampLong(snap.videoTimestamp)}</span>
@@ -161,8 +197,25 @@ export default function SnapshotViewer({
           {snap.gannonNearby && (
             <span className="text-red-500 font-bold text-[11px]">ROAR</span>
           )}
+          {/* HUD counters */}
+          {(snap.heartsCurrent != null || snap.heartsMax != null) && (
+            <span className="text-pink-300 text-[11px]">
+              ♥{snap.heartsCurrent ?? 0}/{snap.heartsMax ?? 3}
+            </span>
+          )}
+          {snap.rupees != null && snap.rupees > 0 && (
+            <span className="text-yellow-200 text-[11px]">¤{snap.rupees}</span>
+          )}
+          {snap.keys != null && snap.keys > 0 && (
+            <span className="text-white/70 text-[11px]">🗝{snap.keys}</span>
+          )}
+          {snap.bombs != null && snap.bombs > 0 && (
+            <span className="text-orange-300 text-[11px]">💣{snap.bombs}</span>
+          )}
           {snap.mapPosition > 0 && (
-            <span className="text-white/40 text-[11px]">#{snap.mapPosition}</span>
+            <span className="text-white/40 text-[11px]">
+              {formatMapPos(snap.mapPosition, snap.dungeonLevel)}
+            </span>
           )}
           {snap.reason === 'transition' && snap.extra && (
             <span className="text-gold text-[11px]">{snap.extra}</span>

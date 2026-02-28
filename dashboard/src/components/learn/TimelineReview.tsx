@@ -151,6 +151,8 @@ export default function TimelineReview({ sessionId, onClose }: TimelineReviewPro
           duration={duration}
           currentIndex={currentIndex}
           onSeek={setCurrentIndex}
+          gameEvents={report.game_events}
+          fps={report.total_frames > 0 && report.video_duration_s > 0 ? report.total_frames / report.video_duration_s : 2}
         />
       </div>
 
@@ -171,6 +173,7 @@ export default function TimelineReview({ sessionId, onClose }: TimelineReviewPro
           <div className="overflow-hidden flex flex-col min-h-0">
             <SnapshotViewer
               sessionId={sessionId}
+              sessionSource={session.source}
               snapshots={snapshots}
               currentIndex={currentIndex}
               setCurrentIndex={setCurrentIndex}

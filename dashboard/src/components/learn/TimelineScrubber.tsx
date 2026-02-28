@@ -3,20 +3,43 @@ import type { LearnSnapshot, LearnAnnotation } from '../../lib/learnApi';
 import { SCREEN_TYPE_COLORS, ANNOTATION_CONFIG, formatTimestamp } from './types';
 import { findNearestSnapshotIndex } from './useTimelineNavigation';
 
+interface GameEvent {
+  frame: number;
+  event: string;
+  description: string;
+  dungeon_level: number;
+}
+
 interface TimelineScrubberProps {
   snapshots: LearnSnapshot[];
   annotations: LearnAnnotation[];
   duration: number;
   currentIndex: number;
   onSeek: (index: number) => void;
+  gameEvents?: GameEvent[];
+  fps?: number;
 }
 
-export default function TimelineScrubber({ snapshots, annotations, duration, currentIndex, onSeek }: TimelineScrubberProps) {
+const EVENT_COLORS: Record<string, string> = {
+  death: '#ef4444',
+  up_a_warp: '#f97316',
+  triforce_inferred: '#eab308',
+  game_complete: '#22c55e',
+  heart_container: '#ec4899',
+  ganon_fight: '#a855f7',
+  ganon_kill: '#8b5cf6',
+  dungeon_first_visit: '#38bdf8',
+  sword_upgrade: '#60a5fa',
+  b_item_change: '#c084fc',
+};
+
+export default function TimelineScrubber({ snapshots, annotations, duration, currentIndex, onSeek, gameEvents, fps }: TimelineScrubberProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverX, setHoverX] = useState(0);
+  const [hoverEvent, setHoverEvent] = useState<string | null>(null);
 
   const drawMarkers = useCallback(() => {
     const canvas = canvasRef.current;
@@ -74,7 +97,23 @@ export default function TimelineScrubber({ snapshots, annotations, duration, cur
       const x = (t / duration) * w;
       ctx.fillText(formatTimestamp(t), x, 38);
     }
-  }, [snapshots, annotations, duration]);
+
+    // Game event markers — small colored triangles at top of bar
+    if (gameEvents && fps && duration > 0) {
+      for (const ev of gameEvents) {
+        const evTs = ev.frame / fps;
+        const ex = Math.round((evTs / duration) * w);
+        const color = EVENT_COLORS[ev.event] ?? '#6b7280';
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(ex, 4);
+        ctx.lineTo(ex - 3, 11);
+        ctx.lineTo(ex + 3, 11);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+  }, [snapshots, annotations, duration, gameEvents, fps]);
 
   useEffect(() => {
     drawMarkers();
@@ -117,8 +156,24 @@ export default function TimelineScrubber({ snapshots, annotations, duration, cur
     if (!rect) return;
     const x = e.clientX - rect.left;
     setHoverX(x);
-    setHoverTime((x / rect.width) * duration);
-  }, [isDragging, duration]);
+    const time = (x / rect.width) * duration;
+    setHoverTime(time);
+
+    // Check for nearby game event
+    let nearestEvent: string | null = null;
+    if (gameEvents && fps && duration > 0) {
+      const pixelThreshold = 6;
+      for (const ev of gameEvents) {
+        const evTs = ev.frame / fps;
+        const evX = (evTs / duration) * rect.width;
+        if (Math.abs(evX - x) <= pixelThreshold) {
+          nearestEvent = ev.description;
+          break;
+        }
+      }
+    }
+    setHoverEvent(nearestEvent);
+  }, [isDragging, duration, gameEvents, fps]);
 
   const currentSnap = snapshots[currentIndex];
   const positionPct = currentSnap ? (currentSnap.videoTimestamp / duration) * 100 : 0;
@@ -154,6 +209,7 @@ export default function TimelineScrubber({ snapshots, annotations, duration, cur
           style={{ left: `${hoverX}px`, transform: 'translateX(-50%)' }}
         >
           {formatTimestamp(hoverTime)}
+          {hoverEvent && <span className="ml-1 text-yellow-300">{hoverEvent}</span>}
         </div>
       )}
     </div>
