@@ -73,6 +73,9 @@ class HudReader:
                        with actual pixel positions from the canonical frame.
                        This is more accurate than life_row shift when the
                        crop has a non-standard aspect ratio.
+            calibrator: Optional HudCalibrator instance. When locked, heart row
+                        positions are derived from the detected LIFE-text y
+                        coordinate rather than static landmark or grid positions.
         """
         self.grid_dx, self.grid_dy = grid_offset
         # Bake life_row shift into instance positions — no runtime adjustment needed
@@ -236,8 +239,8 @@ class HudReader:
                     and self._calibrator._anchors.life_y is not None):
                 life_y = self._calibrator._anchors.life_y
                 lm = dict(lm)          # don't mutate the stored landmark
-                lm['y'] = life_y + 8  # heart row 1 top
-                lm['h'] = 16          # covers both heart rows
+                lm['y'] = life_y - 8  # heart row 1 is one tile above LIFE text
+                lm['h'] = 16          # covers both heart rows (y-8 to y+7)
             region = self._extract(frame, lm['x'], lm['y'],
                                    lm['w'], lm['h'])
             # Normalize to standard heart grid: 64px wide (8×8), 16px tall (2 rows)
@@ -292,8 +295,8 @@ class HudReader:
                 and self._calibrator.result.locked
                 and self._calibrator._anchors.life_y is not None):
             life_y = self._calibrator._anchors.life_y
-            heart_row1_y = life_y + 8
-            heart_row2_y = life_y + 16
+            heart_row1_y = life_y - 8   # one tile above LIFE text (row 4)
+            heart_row2_y = life_y       # same row as LIFE text (row 5)
         else:
             heart_row1_y = self.HEART_ROW_1_Y + self.grid_dy
             heart_row2_y = self.HEART_ROW_2_Y + self.grid_dy

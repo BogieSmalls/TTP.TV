@@ -272,10 +272,11 @@ def test_read_hearts_uses_calibrated_life_y():
 
     reader = HudReader(calibrator=cal)
     frame = np.zeros((240, 256, 3), dtype=np.uint8)
-    # Paint 3 full hearts at heart row 1 (y=48-55, x=176-199)
-    frame[48:56, 176:199, 2] = 200  # red (BGR channel 2)
-    frame[48:56, 176:199, 1] = 30
-    frame[48:56, 176:199, 0] = 30
+    # Paint 3 full hearts at heart row 1 (y=32-39, x=176-199)
+    # heart_row1 = life_y - 8 = 40 - 8 = 32
+    frame[32:40, 176:199, 2] = 200  # red (BGR channel 2)
+    frame[32:40, 176:199, 1] = 30
+    frame[32:40, 176:199, 0] = 30
     cur, max_h, half = reader.read_hearts(frame)
     # Should detect at least some hearts (not 0)
     assert cur >= 1
