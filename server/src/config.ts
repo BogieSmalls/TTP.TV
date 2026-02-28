@@ -120,6 +120,23 @@ export const config = {
     ffmpegPath: (fileConfig.tools?.ffmpegPath as string) ?? 'ffmpeg',
     streamlinkPath: (fileConfig.tools?.streamlinkPath as string) ?? 'streamlink',
   },
+  mediaServer: {
+    http: {
+      port: (fileConfig.mediaServer?.http?.port as number) ?? 8000,
+      allow_origin: (fileConfig.mediaServer?.http?.allow_origin as string) ?? '*',
+    },
+    trans: {
+      ffmpeg: (fileConfig.mediaServer?.trans?.ffmpeg as string) ?? (fileConfig.tools?.ffmpegPath as string) ?? 'ffmpeg',
+      tasks: (fileConfig.mediaServer?.trans?.tasks as unknown[]) ?? [
+        {
+          app: 'live',
+          hls: true,
+          hlsFlags: '[hls_time=1:hls_list_size=3:hls_flags=delete_segments]',
+          hlsKeep: false,
+        },
+      ],
+    },
+  },
 } as const;
 
 export type Config = typeof config;

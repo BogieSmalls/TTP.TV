@@ -17,10 +17,8 @@ export class RtmpServer {
         ping: 30,
         ping_timeout: 60,
       },
-      http: {
-        port: this.config.rtmp.httpPort,
-        allow_origin: '*',
-      },
+      http: this.config.mediaServer.http,
+      trans: this.config.mediaServer.trans,
       logType: 1, // errors only
     };
 
@@ -47,6 +45,7 @@ export class RtmpServer {
     this.nms.run();
     logger.info(`RTMP server started on port ${this.config.rtmp.port}`);
     logger.info(`HTTP-FLV server started on port ${this.config.rtmp.httpPort}`);
+    logger.info(`HLS output available on port ${this.config.mediaServer.http.port}`);
   }
 
   stop(): void {
