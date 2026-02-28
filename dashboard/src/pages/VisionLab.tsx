@@ -1,5 +1,5 @@
-import { useCallback, useRef, useState } from 'react';
-import { Eye } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Eye, Play, Square } from 'lucide-react';
 import { useSocketEvent } from '../hooks/useSocket';
 import { SectionHeader } from '../ui';
 
@@ -76,12 +76,72 @@ function roomImageUrl(col: number, row: number): string {
   return `/api/learn/rooms/C${col}_R${row}.jpg`;
 }
 
+interface PoolRacer {
+  profile_id: string;
+  name: string;
+  twitch_name: string | null;
+}
+
 export default function VisionLab() {
   const [states, setStates] = useState<Record<string, VisionState>>({});
   const [events, setEvents] = useState<FlatEvent[]>([]);
   const [visitedRooms, setVisitedRooms] = useState<Record<string, Set<string>>>({});
   const [deathTimes, setDeathTimes] = useState<Record<string, number[]>>({});
   const nextId = useRef(0);
+
+  // VOD session form
+  const [pool, setPool] = useState<PoolRacer[]>([]);
+  const [vodUrl, setVodUrl] = useState('');
+  const [vodProfileId, setVodProfileId] = useState('');
+  const [vodRacerId, setVodRacerId] = useState('');
+  const [vodActive, setVodActive] = useState<string | null>(null); // racerId of running session
+  const [vodError, setVodError] = useState<string | null>(null);
+  const [vodBusy, setVodBusy] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/pool').then(r => r.json()).then((data: PoolRacer[]) => {
+      setPool(data);
+      if (data.length > 0) {
+        setVodProfileId(data[0].profile_id);
+        setVodRacerId(data[0].name.toLowerCase());
+      }
+    }).catch(() => {});
+  }, []);
+
+  const startVod = async () => {
+    if (!vodUrl || !vodProfileId || !vodRacerId) return;
+    setVodBusy(true);
+    setVodError(null);
+    try {
+      const res = await fetch('/api/vision-vod/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ racerId: vodRacerId, vodUrl, profileId: vodProfileId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Failed to start');
+      setVodActive(vodRacerId);
+    } catch (err) {
+      setVodError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setVodBusy(false);
+    }
+  };
+
+  const stopVod = async () => {
+    if (!vodActive) return;
+    setVodBusy(true);
+    try {
+      await fetch('/api/vision-vod/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ racerId: vodActive }),
+      });
+      setVodActive(null);
+    } finally {
+      setVodBusy(false);
+    }
+  };
 
   const handleVision = useCallback((data: VisionState) => {
     setStates(prev => ({ ...prev, [data.racerId]: data }));
@@ -141,6 +201,75 @@ export default function VisionLab() {
   return (
     <div className="space-y-6">
       <SectionHeader title="Vision Lab" />
+
+      {/* VOD Session Panel */}
+      <div
+        className="rounded-lg p-4 border"
+        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
+      >
+        <div className="text-xs font-medium mb-3" style={{ color: 'var(--text-muted)' }}>VOD Session</div>
+        <div className="flex gap-2 items-end flex-wrap">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs" style={{ color: 'var(--text-muted)' }}>Racer</label>
+            <select
+              value={vodProfileId}
+              disabled={!!vodActive || vodBusy}
+              onChange={e => {
+                const r = pool.find(p => p.profile_id === e.target.value);
+                setVodProfileId(e.target.value);
+                if (r) setVodRacerId(r.name.toLowerCase());
+              }}
+              className="text-sm rounded px-2 py-1.5"
+              style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)', minWidth: 140 }}
+            >
+              {pool.map(r => (
+                <option key={r.profile_id} value={r.profile_id}>{r.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1 flex-1" style={{ minWidth: 240 }}>
+            <label className="text-xs" style={{ color: 'var(--text-muted)' }}>VOD URL</label>
+            <input
+              type="text"
+              placeholder="https://www.twitch.tv/videos/..."
+              value={vodUrl}
+              disabled={!!vodActive || vodBusy}
+              onChange={e => setVodUrl(e.target.value)}
+              className="text-sm rounded px-2 py-1.5"
+              style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
+            />
+          </div>
+          {!vodActive ? (
+            <button
+              onClick={startVod}
+              disabled={vodBusy || !vodUrl || !vodProfileId}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium"
+              style={{ background: 'var(--accent)', color: '#000', opacity: vodBusy || !vodUrl ? 0.5 : 1 }}
+            >
+              <Play size={14} />
+              {vodBusy ? 'Starting…' : 'Start'}
+            </button>
+          ) : (
+            <button
+              onClick={stopVod}
+              disabled={vodBusy}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium"
+              style={{ background: 'rgba(239,68,68,0.2)', color: 'var(--danger)', border: '1px solid var(--danger)' }}
+            >
+              <Square size={14} />
+              {vodBusy ? 'Stopping…' : 'Stop'}
+            </button>
+          )}
+        </div>
+        {vodActive && (
+          <div className="mt-2 text-xs" style={{ color: 'var(--success)' }}>
+            ● Running: {vodActive}
+          </div>
+        )}
+        {vodError && (
+          <div className="mt-2 text-xs" style={{ color: 'var(--danger)' }}>{vodError}</div>
+        )}
+      </div>
 
       {alarms.length > 0 && (
         <div
