@@ -34,6 +34,7 @@ import { ReplayOrchestrator } from './race/ReplayOrchestrator.js';
 import { VodIngestionService } from './knowledge/VodIngestionService.js';
 import { RaceHistoryImporter } from './knowledge/RaceHistoryImporter.js';
 import { VisionWorkerManager } from './vision/VisionWorkerManager.js';
+import { VisionPipelineController } from './vision/VisionPipelineController.js';
 import { templateRouter } from './vision/templateServer.js';
 import { createVisionRoutes } from './api/visionEndpoints.js';
 
@@ -103,6 +104,12 @@ async function main() {
   // ─── Vision Worker Manager (WebGPU browser-side pipeline) ───
   const visionWorkerManager = new VisionWorkerManager();
   visionWorkerManager.start().catch(err => logger.error('VisionWorkerManager start failed', { err }));
+
+  // ─── Vision Pipeline Controller (RawPixelState → events) ───
+  const visionController = new VisionPipelineController(visionWorkerManager);
+  visionController.onGameEvents((racerId, events) => {
+    io.emit('vision:events', { racerId, events });
+  });
 
   // ─── Learn Session Manager ───
   const learnManager = new LearnSessionManager(config);
