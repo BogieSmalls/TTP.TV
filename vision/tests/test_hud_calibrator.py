@@ -62,3 +62,36 @@ def test_detect_life_text_returns_none_on_dark_frame():
     life_y, life_h = cal._detect_life_text(frame)
     assert life_y is None
     assert life_h is None
+
+
+def test_detect_life_text_threshold_boundary():
+    """Exactly 5 red pixels (below threshold of 6) returns None."""
+    cal = HudCalibrator()
+    frame = _make_frame()
+    frame[40, 176:181, 2] = 220  # 5 pixels, R channel
+    frame[40, 176:181, 1] = 20
+    frame[40, 176:181, 0] = 20
+    assert cal._detect_life_text(frame) == (None, None)
+
+
+def test_detect_life_text_six_pixels_found():
+    """Exactly 6 red pixels (at threshold) is detected."""
+    cal = HudCalibrator()
+    frame = _make_frame()
+    frame[40, 176:182, 2] = 220  # 6 pixels, R channel
+    frame[40, 176:182, 1] = 20
+    frame[40, 176:182, 0] = 20
+    life_y, life_h = cal._detect_life_text(frame)
+    assert life_y == 40
+    assert life_h == 1
+
+
+def test_detect_life_text_ratio_filter_rejects_orange():
+    """Bright pixels that fail the R > G*2 ratio do not trigger detection."""
+    cal = HudCalibrator()
+    frame = _make_frame()
+    # r=80, g=60: r > 50 passes but r > g*2 (80 < 120) fails → should return None
+    frame[40:48, 176:200, 2] = 80   # R
+    frame[40:48, 176:200, 1] = 60   # G (too high — fails ratio)
+    frame[40:48, 176:200, 0] = 10   # B
+    assert cal._detect_life_text(frame) == (None, None)
