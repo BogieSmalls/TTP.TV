@@ -37,7 +37,8 @@ export interface LearnProgress {
 
 export type LearnAnnotationType =
   | 'correction' | 'note' | 'bookmark' | 'error'
-  | 'item_pickup' | 'dungeon_enter' | 'dungeon_exit'
+  | 'item_pickup' | 'item_obtained' | 'item_seen_missed'
+  | 'dungeon_enter' | 'dungeon_exit'
   | 'location' | 'strategy' | 'door_repair' | 'death' | 'game_event';
 
 export interface LearnAnnotation {

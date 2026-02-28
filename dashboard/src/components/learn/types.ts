@@ -33,6 +33,8 @@ export interface AnnotationTypeConfig {
 
 export const ANNOTATION_CONFIG: Record<LearnAnnotationType, AnnotationTypeConfig> = {
   item_pickup:   { label: 'Item Pickup',   icon: 'Package',       color: '#a855f7', quickAdd: true },
+  item_obtained: { label: 'Item Obtained', icon: 'PackageCheck',  color: '#a855f7' },
+  item_seen_missed: { label: 'Item Missed', icon: 'PackageX',    color: '#f59e0b' },
   dungeon_enter: { label: 'Enter Dungeon', icon: 'DoorOpen',      color: '#ef4444', quickAdd: true },
   dungeon_exit:  { label: 'Exit Dungeon',  icon: 'DoorClosed',    color: '#f97316', quickAdd: true },
   location:      { label: 'Location',      icon: 'MapPin',        color: '#22c55e', quickAdd: true },

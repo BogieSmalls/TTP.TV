@@ -358,11 +358,19 @@ export class CommentaryEngine {
           priority: 'medium',
           timestamp: Date.now(),
         };
-      case 'item_pickup':
+      case 'item_obtained':
         return {
-          type: 'item_pickup',
+          type: 'item_obtained',
           racerId,
           description: `${name} picked up ${itemName}${dungeonLevel ? ` in Level ${dungeonLevel}` : ''}.`,
+          priority: 'low',
+          timestamp: Date.now(),
+        };
+      case 'item_seen_missed':
+        return {
+          type: 'item_seen_missed',
+          racerId,
+          description: `${name} saw ${itemName}${dungeonLevel ? ` in Level ${dungeonLevel}` : ''} but didn't pick it up.`,
           priority: 'low',
           timestamp: Date.now(),
         };
@@ -927,8 +935,10 @@ export class CommentaryEngine {
         return 'game completion race finish celebration';
       case 'staircase_item_acquired':
         return `staircase item dungeon strategy ${trigger.description}`;
-      case 'item_pickup':
+      case 'item_obtained':
         return `item pickup strategy ${trigger.description}`;
+      case 'item_seen_missed':
+        return `item seen missed strategy ${trigger.description}`;
       case 'heart_container':
         return 'heart container health upgrade progression';
       case 'up_a_warp':

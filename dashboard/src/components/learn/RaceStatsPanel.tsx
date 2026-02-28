@@ -63,7 +63,7 @@ export default function RaceStatsPanel({ report, annotations }: RaceStatsPanelPr
 
   const itemPickups = useMemo(() =>
     annotations
-      .filter(a => a.type === 'item_pickup' && a.videoTimestamp != null)
+      .filter(a => (a.type === 'item_pickup' || a.type === 'item_obtained') && a.videoTimestamp != null)
       .sort((a, b) => a.videoTimestamp! - b.videoTimestamp!),
   [annotations]);
 
