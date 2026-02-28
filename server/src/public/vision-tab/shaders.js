@@ -62,3 +62,109 @@ fn gold_pass(@builtin(global_invocation_id) gid: vec3<u32>) {
   atomicAdd(&result.gold_pixels, is_gold);
 }
 `;
+
+export const NCC_SHADER = /* wgsl */`
+const MAX_TEMPLATES: u32 = 32u;
+
+struct Calibration {
+  crop_x: f32, crop_y: f32, scale_x: f32, scale_y: f32,
+  grid_dx: f32, grid_dy: f32, video_w: f32, video_h: f32,
+}
+struct TileDef {
+  nes_x: f32, nes_y: f32,
+  width: u32, height: u32,
+  tmpl_offset: u32, tmpl_count: u32,
+}
+struct NccResults { scores: array<f32>, }
+
+@group(0) @binding(0) var source: texture_external;
+@group(0) @binding(1) var src_sampler: sampler;
+@group(0) @binding(2) var templates_8x8: texture_2d_array<f32>;
+@group(0) @binding(3) var templates_8x16: texture_2d_array<f32>;
+@group(0) @binding(4) var<storage, read> tile_defs: array<TileDef>;
+@group(0) @binding(5) var<uniform> calib: Calibration;
+@group(0) @binding(6) var<storage, read_write> results: NccResults;
+
+var<workgroup> tile_px: array<f32, 64>;
+var<workgroup> reduction: array<f32, 64>;
+
+fn nes_to_uv(nx: f32, ny: f32) -> vec2<f32> {
+  return vec2<f32>(
+    (calib.crop_x + (nx + calib.grid_dx) * calib.scale_x) / calib.video_w,
+    (calib.crop_y + (ny + calib.grid_dy) * calib.scale_y) / calib.video_h,
+  );
+}
+
+// Each workgroup handles one (tile_idx, template_idx) pair.
+// Workgroup size 64 = one thread per pixel in an 8x8 region.
+// For 8x16 tiles, only the top 8x8 half is sampled (sufficient for NCC discrimination).
+@compute @workgroup_size(64)
+fn ncc_main(
+  @builtin(local_invocation_index) lid: u32,
+  @builtin(workgroup_id) wid: vec3<u32>
+) {
+  let tile_idx = wid.x;
+  let tmpl_idx = wid.y;
+  let def = tile_defs[tile_idx];
+  if tmpl_idx >= def.tmpl_count { return; }
+
+  let local_x = lid % 8u;
+  let local_y = lid / 8u;
+
+  // Sample source pixel at this tile position
+  let nx = def.nes_x + f32(local_x);
+  let ny = def.nes_y + f32(local_y);
+  let uv = nes_to_uv(nx, ny);
+  let color = textureSampleBaseClampToEdge(source, src_sampler, uv);
+  // Max-channel grayscale (matches Python digit_reader: np.max(tile, axis=2))
+  tile_px[lid] = max(max(color.r, color.g), color.b);
+  workgroupBarrier();
+
+  // Parallel sum reduction for mean
+  reduction[lid] = tile_px[lid];
+  workgroupBarrier();
+  for (var stride = 32u; stride > 0u; stride >>= 1u) {
+    if lid < stride { reduction[lid] += reduction[lid + stride]; }
+    workgroupBarrier();
+  }
+  let src_mean = reduction[0] / 64.0;
+  workgroupBarrier();
+
+  // Variance for std
+  let centered = tile_px[lid] - src_mean;
+  reduction[lid] = centered * centered;
+  workgroupBarrier();
+  for (var stride = 32u; stride > 0u; stride >>= 1u) {
+    if lid < stride { reduction[lid] += reduction[lid + stride]; }
+    workgroupBarrier();
+  }
+  let src_std = sqrt(max(reduction[0] / 64.0, 1e-6));
+  workgroupBarrier();
+
+  // Load template pixel (pre-normalized: mean=0, std=1 from server)
+  var tmpl_val: f32;
+  if def.width == 8u && def.height == 8u {
+    tmpl_val = textureLoad(templates_8x8,
+                           vec2<i32>(i32(local_x), i32(local_y)),
+                           i32(def.tmpl_offset + tmpl_idx), 0).r;
+  } else {
+    tmpl_val = textureLoad(templates_8x16,
+                           vec2<i32>(i32(local_x), i32(local_y)),
+                           i32(def.tmpl_offset + tmpl_idx), 0).r;
+  }
+
+  // Cross-correlation (centered source x pre-normalized template)
+  reduction[lid] = centered * tmpl_val;
+  workgroupBarrier();
+  for (var stride = 32u; stride > 0u; stride >>= 1u) {
+    if lid < stride { reduction[lid] += reduction[lid + stride]; }
+    workgroupBarrier();
+  }
+
+  // NCC score written by thread 0 only
+  if lid == 0u {
+    let ncc = reduction[0] / (src_std * 64.0);
+    results.scores[tile_idx * MAX_TEMPLATES + tmpl_idx] = ncc;
+  }
+}
+`;

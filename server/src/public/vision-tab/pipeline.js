@@ -1,4 +1,5 @@
-import { AGGREGATE_SHADER } from './shaders.js';
+import { AGGREGATE_SHADER, NCC_SHADER } from './shaders.js';
+import { TILE_DEFS, MAX_TEMPLATES } from './tileDefs.js';
 
 export class VisionPipeline {
   constructor(gpu, calib) {
@@ -47,6 +48,47 @@ export class VisionPipeline {
       layout: 'auto',
       compute: { module: aggModule, entryPoint: 'gold_pass' },
     });
+
+    // NCC pipeline (Pass 1)
+    const nccModule = d.createShaderModule({ code: NCC_SHADER });
+    this.nccPipeline = d.createComputePipeline({
+      layout: 'auto',
+      compute: { module: nccModule, entryPoint: 'ncc_main' },
+    });
+
+    // Tile definitions buffer — CRITICAL: use DataView to write mixed f32/u32 types
+    // WGSL TileDef struct: nes_x(f32), nes_y(f32), width(u32), height(u32), tmpl_offset(u32), tmpl_count(u32)
+    // = 6 fields x 4 bytes = 24 bytes per tile (no WGSL padding since all fields are 4-byte aligned)
+    const tileStride = 24; // bytes per TileDef
+    const tileBuf = new ArrayBuffer(TILE_DEFS.length * tileStride);
+    const view = new DataView(tileBuf);
+    TILE_DEFS.forEach((def, i) => {
+      const off = i * tileStride;
+      view.setFloat32(off + 0,  def.nesX, true);                         // nes_x: f32
+      view.setFloat32(off + 4,  def.nesY, true);                         // nes_y: f32
+      view.setUint32( off + 8,  8, true);                                // width: u32 (always 8)
+      view.setUint32( off + 12, def.size === '8x8' ? 8 : 16, true);     // height: u32
+      const meta = this.gpu.templateMeta[def.templateGroup] || [];
+      view.setUint32( off + 16, 0, true);             // tmpl_offset: u32 (always 0, each group is its own texture array)
+      view.setUint32( off + 20, meta.length, true);   // tmpl_count: u32
+    });
+    this.tileDefsBuffer = d.createBuffer({
+      size: tileBuf.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+    d.queue.writeBuffer(this.tileDefsBuffer, 0, tileBuf);
+
+    // NCC result buffer: one f32 per (tile x MAX_TEMPLATES)
+    const nccResultSize = TILE_DEFS.length * MAX_TEMPLATES * 4;
+    this.nccResultSize = nccResultSize;
+    this.nccResultBuffer = d.createBuffer({
+      size: nccResultSize,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+    });
+    this.nccStagingBuffer = d.createBuffer({
+      size: nccResultSize,
+      usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+    });
   }
 
   _updateCalib() {
@@ -85,6 +127,24 @@ export class VisionPipeline {
 
     const pass = enc.beginComputePass();
 
+    // Pass 1: NCC — dispatch before aggregate passes
+    const nccBindGroup = d.createBindGroup({
+      layout: this.nccPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: externalTexture },
+        { binding: 1, resource: this.sampler },
+        { binding: 2, resource: this.gpu.templates['8x8'].createView() },
+        { binding: 3, resource: this.gpu.templates['8x16'].createView() },
+        { binding: 4, resource: { buffer: this.tileDefsBuffer } },
+        { binding: 5, resource: { buffer: this.calibBuffer } },
+        { binding: 6, resource: { buffer: this.nccResultBuffer } },
+      ],
+    });
+    pass.setPipeline(this.nccPipeline);
+    pass.setBindGroup(0, nccBindGroup);
+    // Dispatch: x = tile count, y = MAX_TEMPLATES (workgroups where tmpl_idx >= tmpl_count return early)
+    pass.dispatchWorkgroups(TILE_DEFS.length, MAX_TEMPLATES);
+
     // Brightness: game area 256x176 NES pixels, stepped by 4 -> 64x44 threads
     pass.setPipeline(this.brightnessPipeline);
     pass.setBindGroup(0, makeBindGroup(this.brightnessPipeline));
@@ -104,16 +164,24 @@ export class VisionPipeline {
 
     // Readback to CPU
     enc.copyBufferToBuffer(this.resultBuffer, 0, this.stagingBuffer, 0, 12);
+    enc.copyBufferToBuffer(this.nccResultBuffer, 0, this.nccStagingBuffer, 0, this.nccResultSize);
     d.queue.submit([enc.finish()]);
 
     await this.stagingBuffer.mapAsync(GPUMapMode.READ);
     const raw = new Int32Array(this.stagingBuffer.getMappedRange().slice(0));
     this.stagingBuffer.unmap();
 
+    // NCC readback
+    await this.nccStagingBuffer.mapAsync(GPUMapMode.READ);
+    const nccRaw = new Float32Array(this.nccStagingBuffer.getMappedRange(0, this.nccResultSize).slice(0));
+    this.nccStagingBuffer.unmap();
+    const hudScores = Array.from(nccRaw);
+
     return {
       gameBrightness: raw[0] / 1000,
       redRatioAtLife: raw[1] / 1000,
       goldPixelCount: raw[2],
+      hudScores,
     };
   }
 }

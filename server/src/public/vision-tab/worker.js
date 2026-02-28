@@ -54,10 +54,9 @@ async function onVideoFrame(now, metadata) {
         type: 'rawState',
         racerId,
         frameCount,
-        ...aggregates,
-        hudScores: [],      // populated in Task 7
-        roomScores: [],     // populated in Task 13
-        floorItems: [],     // populated in Task 14
+        ...aggregates,  // now includes hudScores from pipeline
+        roomScores: [],  // populated in Task 13
+        floorItems: [],  // populated in Task 14
       }));
     }
   }
