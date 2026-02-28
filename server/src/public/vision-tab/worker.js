@@ -1,5 +1,7 @@
 'use strict';
 
+import { scanCalibration } from './calibration.js';
+
 const params = new URLSearchParams(location.search);
 const racerId = params.get('racerId');
 const streamUrl = params.get('streamUrl');
@@ -34,7 +36,49 @@ function onVideoFrame(now, metadata) {
   video.requestVideoFrameCallback(onVideoFrame);
 }
 
-video.requestVideoFrameCallback(onVideoFrame);
+// ── Calibration phase ─────────────────────────────────────────────────────
+const calibCanvas = document.createElement('canvas');
+let calibration = null;
+let calibFrameCount = 0;
+
+async function calibrationFrame() {
+  calibFrameCount++;
+  calibCanvas.width = video.videoWidth;
+  calibCanvas.height = video.videoHeight;
+  const ctx = calibCanvas.getContext('2d');
+  ctx.drawImage(video, 0, 0);
+  const imageData = ctx.getImageData(0, 0, video.videoWidth, video.videoHeight);
+  const result = scanCalibration(imageData, video.videoWidth, video.videoHeight);
+
+  if (result) {
+    calibration = result;
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'calibration', racerId, calibration }));
+    }
+    console.log(`[${racerId}] Calibration locked (${calibFrameCount} frames):`, result);
+    startDetectionLoop();
+  } else if (calibFrameCount >= 60) {
+    // Fallback: unit scale, no crop — still functional for test streams
+    calibration = { cropX: 0, cropY: 0, scaleX: 1, scaleY: 1, gridDx: 1, gridDy: 2,
+                    videoWidth: video.videoWidth, videoHeight: video.videoHeight };
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'calibration', racerId, calibration }));
+    }
+    console.warn(`[${racerId}] Calibration fallback after 60 frames`);
+    startDetectionLoop();
+  } else {
+    video.requestVideoFrameCallback(calibrationFrame);
+  }
+}
+
+function startDetectionLoop() {
+  video.requestVideoFrameCallback(onVideoFrame);
+}
+
+// Start calibration when video is ready
+video.addEventListener('loadeddata', () => {
+  video.requestVideoFrameCallback(calibrationFrame);
+});
 
 // ── Preview ────────────────────────────────────────────────────────────────
 function sendPreview() {
