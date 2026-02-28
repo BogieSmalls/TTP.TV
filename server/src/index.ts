@@ -35,6 +35,7 @@ import { VodIngestionService } from './knowledge/VodIngestionService.js';
 import { RaceHistoryImporter } from './knowledge/RaceHistoryImporter.js';
 import { VisionWorkerManager } from './vision/VisionWorkerManager.js';
 import { templateRouter } from './vision/templateServer.js';
+import { createVisionRoutes } from './api/visionEndpoints.js';
 
 async function main() {
   // ─── Augment PATH with tool directories ───
@@ -362,6 +363,9 @@ async function main() {
 
   // Vision template endpoint (WebGPU pipeline)
   app.use('/api/vision', templateRouter);
+
+  // Vision preview/debug/state REST endpoints (operator tooling)
+  app.use('/api/vision', createVisionRoutes(visionWorkerManager));
 
   // API routes
   const apiRouter = createApiRoutes({

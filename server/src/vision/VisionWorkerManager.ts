@@ -1,5 +1,6 @@
 import { Browser, chromium, Page } from 'playwright';
 import { RacerConfig, RawPixelState } from './types.js';
+import type { StableGameState } from './StateStabilizer.js';
 // WebSocket is the Node.js 22 built-in global — no import needed (consistent with RaceMonitor.ts)
 
 export class VisionWorkerManager {
@@ -8,6 +9,9 @@ export class VisionWorkerManager {
   private onStateCallback: ((state: RawPixelState) => void) | null = null;
   private monitoredRacers = new Set<string>();
   private featuredRacers = new Set<string>();
+  private latestFrames = new Map<string, Buffer>();
+  private latestDebugFrames = new Map<string, Buffer>();
+  private latestStates = new Map<string, StableGameState>();
 
   async start(): Promise<void> {
     this.browser = await chromium.launch({
@@ -48,6 +52,10 @@ export class VisionWorkerManager {
           const msg = JSON.parse(raw);
           if (msg.type === 'calibration') {
             this.emit('calibration', msg);
+          } else if (msg.type === 'previewFrame' && typeof msg.jpeg === 'string') {
+            this.cacheFrame(racerId, msg.jpeg);
+          } else if (msg.type === 'debugFrame' && typeof msg.jpeg === 'string') {
+            this.cacheDebugFrame(racerId, msg.jpeg);
           } else {
             const state = msg as RawPixelState;
             this.onStateCallback?.(state);
@@ -69,6 +77,30 @@ export class VisionWorkerManager {
     for (const id of Array.from(this.tabs.keys())) await this.removeRacer(id);
     await this.browser?.close();
     this.browser = null;
+  }
+
+  cacheFrame(racerId: string, jpegBase64: string): void {
+    this.latestFrames.set(racerId, Buffer.from(jpegBase64, 'base64'));
+  }
+
+  cacheDebugFrame(racerId: string, jpegBase64: string): void {
+    this.latestDebugFrames.set(racerId, Buffer.from(jpegBase64, 'base64'));
+  }
+
+  cacheState(racerId: string, state: StableGameState): void {
+    this.latestStates.set(racerId, state);
+  }
+
+  getLatestFrame(racerId: string): Buffer | null {
+    return this.latestFrames.get(racerId) ?? null;
+  }
+
+  getLatestDebugFrame(racerId: string): Buffer | null {
+    return this.latestDebugFrames.get(racerId) ?? null;
+  }
+
+  getLatestState(racerId: string): StableGameState | null {
+    return this.latestStates.get(racerId) ?? null;
   }
 
   sendToTab(racerId: string, message: object): void {
