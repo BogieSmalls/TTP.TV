@@ -68,3 +68,68 @@ class MinimapReader:
             'cell_w_overworld': cell_w_overworld,
             'minimap_h': cell_h * MINIMAP_NES_ROWS,
         }
+
+    def _detect_level_text(self, frame: np.ndarray) -> int | None:
+        """Return left edge x of LEVEL text if present in row 1, else None."""
+        row1 = frame[8:16, 0:64, :]
+        brightness = np.mean(row1, axis=2)
+        bright_cols = np.where(np.any(brightness > 20, axis=0))[0]
+        if len(bright_cols) == 0:
+            return None
+        return int(bright_cols[0])
+
+    def _find_link_dot(self, minimap_region: np.ndarray,
+                       grid: dict, is_dungeon: bool
+                       ) -> tuple[int, int] | None:
+        """Find the brightest pixel cluster; return (col, row) 1-based or None."""
+        gray = np.mean(minimap_region, axis=2)
+        threshold = float(np.max(gray)) * 0.8
+        if threshold < 80:
+            return None
+        bright_mask = (gray > threshold).astype(np.uint8)
+        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(bright_mask)
+        if num_labels <= 1:
+            return None
+        best_label = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+        cy, cx = centroids[best_label][1], centroids[best_label][0]
+        cell_w = grid['cell_w_dungeon'] if is_dungeon else grid['cell_w_overworld']
+        cell_h = grid['cell_h']
+        map_h = grid['minimap_h']
+        map_w = minimap_region.shape[1]
+        cols = MINIMAP_DG_COLS if is_dungeon else MINIMAP_OW_COLS
+        col = max(1, min(cols, int(cx / map_w * cols) + 1))
+        row = max(1, min(MINIMAP_NES_ROWS, int(cy / map_h * MINIMAP_NES_ROWS) + 1))
+        return col, row
+
+    def read(self, frame: np.ndarray, screen_type: str,
+             dungeon_level: int = 0) -> MinimapResult:
+        """Read minimap position and metadata from frame."""
+        result = MinimapResult()
+        grid = self._derive_grid()
+
+        # Determine mode from LEVEL text (overrides screen classifier)
+        level_x = self._detect_level_text(frame)
+        is_dungeon = level_x is not None or screen_type == 'dungeon'
+        result.mode = 'dungeon' if is_dungeon else 'overworld'
+
+        # Extract minimap pixel region
+        x1 = int(grid['minimap_left_x'])
+        y1 = int(grid['minimap_top_y'])
+        x2 = int(grid['minimap_right_x'])
+        y2 = int(y1 + grid['minimap_h'])
+        x1, y1 = max(0, x1), max(0, y1)
+        x2, y2 = min(255, x2), min(239, y2)
+        if x2 <= x1 or y2 <= y1:
+            return result
+
+        minimap = frame[y1:y2, x1:x2]
+
+        # Find Link dot
+        dot = self._find_link_dot(minimap, grid, is_dungeon)
+        if dot is not None:
+            result.col, result.row = dot
+            cols = MINIMAP_DG_COLS if is_dungeon else MINIMAP_OW_COLS
+            result.map_position = (result.row - 1) * cols + (result.col - 1)
+
+        self._prev_frame = frame.copy()
+        return result

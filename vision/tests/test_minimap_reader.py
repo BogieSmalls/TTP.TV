@@ -54,3 +54,39 @@ def test_minimap_top_y_derived_from_rupee():
     mm = MinimapReader(calibrator=cal)
     grid = mm._derive_grid()
     assert abs(grid['minimap_top_y'] - 13.0) < 1.0
+
+
+def _make_frame() -> np.ndarray:
+    return np.zeros((240, 256, 3), dtype=np.uint8)
+
+
+def test_detect_level_text_dungeon():
+    """Non-black pixels in row 1 (y=8-15) indicate dungeon mode."""
+    cal = _make_locked_calibrator()
+    mm = MinimapReader(calibrator=cal)
+    frame = _make_frame()
+    frame[8:16, 0:64, :] = 150  # LEVEL text
+    assert mm._detect_level_text(frame) is not None
+
+
+def test_detect_level_text_overworld():
+    """No pixels in row 1 → overworld mode."""
+    cal = _make_locked_calibrator()
+    mm = MinimapReader(calibrator=cal)
+    assert mm._detect_level_text(_make_frame()) is None
+
+
+def test_link_dot_detected_in_dungeon_minimap():
+    """Bright dot in minimap → correct col/row returned."""
+    cal = _make_locked_calibrator()
+    mm = MinimapReader(calibrator=cal)
+    frame = _make_frame()
+    # Paint bright dot at dungeon minimap col 2 row 1:
+    # cell_w=8, cell_h=4, minimap_left=16, minimap_top=13
+    # col2 center x = 16 + 8*1 + 4 = 28
+    # row1 center y = 13 + 4*0 + 2 = 15
+    frame[15:17, 28:30, :] = 255
+    result = mm.read(frame, screen_type='dungeon', dungeon_level=2)
+    assert result.mode == 'dungeon'
+    assert result.col >= 1
+    assert result.row >= 1
