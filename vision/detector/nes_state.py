@@ -196,9 +196,12 @@ class NesStateDetector:
         # Read HUD elements (only when the Zelda HUD is actually present).
         if (state.screen_type in ('overworld', 'dungeon', 'cave')
                 and self.hud_reader.is_hud_present(frame)):
-            # Run HUD calibration
-            self.calibrator.calibrate(frame, frame_num=getattr(self, '_frame_count', 0))
-            self._frame_count = getattr(self, '_frame_count', 0) + 1
+            # NOTE: HudCalibrator is designed for native-resolution frames
+            # (set_native_frame path). On canonical 256x240 frames,
+            # _detect_life_text misidentifies life_y (picks up rupee/heart
+            # red pixels at y=18 instead of LIFE text at y=40), producing
+            # wrong scale factors. Calibration is skipped here; it runs
+            # when native frames are available via set_native_frame().
 
             # Read dungeon level first — it can correct screen_type for bright
             # dungeons that the brightness-based classifier mistakes for overworld
@@ -234,14 +237,20 @@ class NesStateDetector:
                 state.gannon_nearby = self.ganon_detector.detect(
                     frame, state.screen_type, state.dungeon_level)
 
-            # Minimap reading (replaces old minimap position)
-            minimap_result = self.minimap.read(frame, state.screen_type, state.dungeon_level)
-            state.map_position = minimap_result.map_position
-            state.dungeon_map_rooms = minimap_result.dungeon_map_rooms
-            state.triforce_room = minimap_result.triforce_room
-            state.zelda_room = minimap_result.zelda_room
-            state.tile_match_id = minimap_result.tile_match_id
-            state.tile_match_score = minimap_result.tile_match_score
+            # Minimap position (proven working on canonical frames)
+            is_dungeon = state.screen_type == 'dungeon'
+            state.map_position = self.hud_reader.read_minimap_position(frame, is_dungeon)
+
+            # MinimapReader provides extra fields (dungeon map, triforce/zelda
+            # room dots) but its grid derivation depends on calibrator anchors.
+            # Only use it when calibrator is locked (native-resolution path).
+            if self.calibrator.result.locked:
+                minimap_result = self.minimap.read(frame, state.screen_type, state.dungeon_level)
+                state.dungeon_map_rooms = minimap_result.dungeon_map_rooms
+                state.triforce_room = minimap_result.triforce_room
+                state.zelda_room = minimap_result.zelda_room
+                state.tile_match_id = minimap_result.tile_match_id
+                state.tile_match_score = minimap_result.tile_match_score
 
             # Item detection in game area (triforce pieces, etc.)
             items = self.item_detector.detect_items(frame, state.screen_type)
