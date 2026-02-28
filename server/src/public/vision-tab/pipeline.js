@@ -49,6 +49,14 @@ export class VisionPipeline {
       compute: { module: aggModule, entryPoint: 'gold_pass' },
     });
 
+    // Guard: NCC pipeline requires both template texture groups to be loaded
+    if (!this.gpu.templates['8x8'] || !this.gpu.templates['8x16']) {
+      console.warn('NCC pipeline disabled: missing 8x8 or 8x16 template group');
+      this.nccPipeline = null;
+      this.nccResultSize = 0;
+      return;
+    }
+
     // NCC pipeline (Pass 1)
     const nccModule = d.createShaderModule({ code: NCC_SHADER });
     this.nccPipeline = d.createComputePipeline({
@@ -66,7 +74,7 @@ export class VisionPipeline {
       const off = i * tileStride;
       view.setFloat32(off + 0,  def.nesX, true);                         // nes_x: f32
       view.setFloat32(off + 4,  def.nesY, true);                         // nes_y: f32
-      view.setUint32( off + 8,  8, true);                                // width: u32 (always 8)
+      view.setUint32( off + 8,  parseInt(def.size.split('x')[0]), true); // width: u32
       view.setUint32( off + 12, def.size === '8x8' ? 8 : 16, true);     // height: u32
       const meta = this.gpu.templateMeta[def.templateGroup] || [];
       view.setUint32( off + 16, 0, true);             // tmpl_offset: u32 (always 0, each group is its own texture array)
@@ -127,23 +135,26 @@ export class VisionPipeline {
 
     const pass = enc.beginComputePass();
 
-    // Pass 1: NCC — dispatch before aggregate passes
-    const nccBindGroup = d.createBindGroup({
-      layout: this.nccPipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: externalTexture },
-        { binding: 1, resource: this.sampler },
-        { binding: 2, resource: this.gpu.templates['8x8'].createView() },
-        { binding: 3, resource: this.gpu.templates['8x16'].createView() },
-        { binding: 4, resource: { buffer: this.tileDefsBuffer } },
-        { binding: 5, resource: { buffer: this.calibBuffer } },
-        { binding: 6, resource: { buffer: this.nccResultBuffer } },
-      ],
-    });
-    pass.setPipeline(this.nccPipeline);
-    pass.setBindGroup(0, nccBindGroup);
-    // Dispatch: x = tile count, y = MAX_TEMPLATES (workgroups where tmpl_idx >= tmpl_count return early)
-    pass.dispatchWorkgroups(TILE_DEFS.length, MAX_TEMPLATES);
+    // Only dispatch NCC if pipeline is available
+    if (this.nccPipeline) {
+      // Pass 1: NCC — dispatch before aggregate passes
+      const nccBindGroup = d.createBindGroup({
+        layout: this.nccPipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: externalTexture },
+          { binding: 1, resource: this.sampler },
+          { binding: 2, resource: this.gpu.templates['8x8'].createView() },
+          { binding: 3, resource: this.gpu.templates['8x16'].createView() },
+          { binding: 4, resource: { buffer: this.tileDefsBuffer } },
+          { binding: 5, resource: { buffer: this.calibBuffer } },
+          { binding: 6, resource: { buffer: this.nccResultBuffer } },
+        ],
+      });
+      pass.setPipeline(this.nccPipeline);
+      pass.setBindGroup(0, nccBindGroup);
+      // Dispatch: x = tile count, y = MAX_TEMPLATES (workgroups where tmpl_idx >= tmpl_count return early)
+      pass.dispatchWorkgroups(TILE_DEFS.length, MAX_TEMPLATES);
+    }
 
     // Brightness: game area 256x176 NES pixels, stepped by 4 -> 64x44 threads
     pass.setPipeline(this.brightnessPipeline);
@@ -164,7 +175,9 @@ export class VisionPipeline {
 
     // Readback to CPU
     enc.copyBufferToBuffer(this.resultBuffer, 0, this.stagingBuffer, 0, 12);
-    enc.copyBufferToBuffer(this.nccResultBuffer, 0, this.nccStagingBuffer, 0, this.nccResultSize);
+    if (this.nccPipeline) {
+      enc.copyBufferToBuffer(this.nccResultBuffer, 0, this.nccStagingBuffer, 0, this.nccResultSize);
+    }
     d.queue.submit([enc.finish()]);
 
     await this.stagingBuffer.mapAsync(GPUMapMode.READ);
@@ -172,10 +185,13 @@ export class VisionPipeline {
     this.stagingBuffer.unmap();
 
     // NCC readback
-    await this.nccStagingBuffer.mapAsync(GPUMapMode.READ);
-    const nccRaw = new Float32Array(this.nccStagingBuffer.getMappedRange(0, this.nccResultSize).slice(0));
-    this.nccStagingBuffer.unmap();
-    const hudScores = Array.from(nccRaw);
+    let hudScores = [];
+    if (this.nccPipeline) {
+      await this.nccStagingBuffer.mapAsync(GPUMapMode.READ);
+      const nccRaw = new Float32Array(this.nccStagingBuffer.getMappedRange(0, this.nccResultSize).slice(0));
+      this.nccStagingBuffer.unmap();
+      hudScores = Array.from(nccRaw);
+    }
 
     return {
       gameBrightness: raw[0] / 1000,
