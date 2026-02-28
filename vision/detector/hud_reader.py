@@ -231,16 +231,6 @@ class HudReader:
         # Landmark path: extract full region, normalize, scan slices
         if self._has_landmark('Hearts'):
             lm = self._get_landmark('Hearts')
-            # If calibrator is locked, derive heart row y from LIFE text position
-            # rather than using the static landmark y (which may be misaligned).
-            # LIFE text is at life_y; heart row 1 starts 8px below it.
-            if (self._calibrator is not None
-                    and self._calibrator.result.locked
-                    and self._calibrator._anchors.life_y is not None):
-                life_y = self._calibrator._anchors.life_y
-                lm = dict(lm)          # don't mutate the stored landmark
-                lm['y'] = life_y - 8  # heart row 1 is one tile above LIFE text
-                lm['h'] = 16          # covers both heart rows (y-8 to y+7)
             region = self._extract(frame, lm['x'], lm['y'],
                                    lm['w'], lm['h'])
             # Normalize to standard heart grid: 64px wide (8×8), 16px tall (2 rows)
@@ -285,21 +275,17 @@ class HudReader:
                 return r2_cur, r2_max + extra_empties, r2_half
             return r1_cur + r2_cur, r1_max + r2_max, r1_half or r2_half
 
-        # Grid-based fallback
+        # Grid-based fallback (no landmarks available)
         current = 0
         max_hearts = 0
         has_half = False
 
-        # Use calibrated heart row y if available, otherwise use grid-based y
-        if (self._calibrator is not None
-                and self._calibrator.result.locked
-                and self._calibrator._anchors.life_y is not None):
-            life_y = self._calibrator._anchors.life_y
-            heart_row1_y = life_y - 8   # one tile above LIFE text (row 4)
-            heart_row2_y = life_y       # same row as LIFE text (row 5)
-        else:
-            heart_row1_y = self.HEART_ROW_1_Y + self.grid_dy
-            heart_row2_y = self.HEART_ROW_2_Y + self.grid_dy
+        # Grid-based positions — calibrator override is only applied in the
+        # landmark path above.  The calibrator's _detect_life_text can
+        # misidentify life_y on canonical 256x240 golden frames (picks up
+        # rupee/heart red pixels), so we rely on the tile grid here.
+        heart_row1_y = self.HEART_ROW_1_Y + self.grid_dy
+        heart_row2_y = self.HEART_ROW_2_Y + self.grid_dy
 
         for row_y in [heart_row1_y, heart_row2_y]:
             for i in range(8):  # max 8 hearts per row

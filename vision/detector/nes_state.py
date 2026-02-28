@@ -19,6 +19,8 @@ from .triforce_reader import TriforceReader
 from .floor_item_detector import FloorItemDetector
 from .ganon_detector import GanonDetector
 from .item_detector import ItemDetector
+from .hud_calibrator import HudCalibrator
+from .minimap_reader import MinimapReader
 
 
 @dataclass
@@ -43,6 +45,11 @@ class GameState:
     detected_item: Optional[str] = None  # item sprite visible in game area
     detected_item_y: int = 0             # y position in game area (0=top)
     floor_items: list = field(default_factory=list)  # FloorItem dicts on floor
+    dungeon_map_rooms: int | None = None        # bitmask; None until map acquired
+    triforce_room: tuple | None = None           # (col,row); None until compass
+    zelda_room: tuple | None = None              # L9 only: Zelda's room
+    tile_match_id: int | None = None             # OW tile recognition result
+    tile_match_score: float = 0.0
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -62,9 +69,10 @@ class NesStateDetector:
 
     def __init__(self, template_dir: str = 'templates', grid_offset: tuple[int, int] = (1, 2),
                  life_row: int = 5, landmarks: list[dict] | None = None):
+        self.calibrator = HudCalibrator()
         self.screen_classifier = ScreenClassifier(grid_offset=grid_offset, life_row=life_row)
         self.hud_reader = HudReader(grid_offset=grid_offset, life_row=life_row,
-                                     landmarks=landmarks)
+                                     landmarks=landmarks, calibrator=self.calibrator)
         self.digit_reader = DigitReader(f'{template_dir}/digits')
         self.item_reader = ItemReader(f'{template_dir}/items')
         self.inventory_reader = InventoryReader()
@@ -75,6 +83,11 @@ class NesStateDetector:
             drops_dir=f'{template_dir}/drops',
         )
         self.ganon_detector = GanonDetector(f'{template_dir}/enemies')
+        self.minimap = MinimapReader(calibrator=self.calibrator)
+        # Deferred import to avoid circular dependency (game_logic imports GameState)
+        from .game_logic import PlayerItemTracker, RaceItemTracker
+        self.player_items = PlayerItemTracker()
+        self.race_items = RaceItemTracker()
 
     def _set_grid_offset(self, dx: int, dy: int) -> None:
         """Update grid offset on all sub-detectors that use tile positions."""
@@ -85,35 +98,63 @@ class NesStateDetector:
         self.triforce_reader.grid_dx = dx
         self.triforce_reader.grid_dy = dy
 
-    def _refine_grid_dx(self, frame: np.ndarray, initial_dx: int, dy: int) -> int:
-        """Refine dx by testing digit template matches at known HUD positions.
+    def _refine_grid(self, frame: np.ndarray, initial_dx: int, initial_dy: int) -> tuple[int, int]:
+        """Refine (dx, dy) using digit template matches across multiple HUD rows.
 
         find_grid_alignment uses LIFE text redness which can be ambiguous on
-        frames resized from non-native resolution (red bleeds across offsets).
-        Digit templates are sharper discriminators of the correct dx.
+        frames resized from non-native resolution (red bleeds ±1px). Digit
+        templates are sharper discriminators of the correct offset.
 
-        Tests digit matching at rupee columns (12-14) at row 2. Returns the dx
-        (from 0-7) that produces the highest total digit match score.
+        Quality metric: minimum of the per-row average digit score across
+        sampled HUD rows (rupees row 2, level row 1, keys row 4, bombs row 5).
+        Using the minimum prevents a single high-scoring row (e.g. three rupee
+        digits) from overriding dy when other rows disagree.
+
+        dy is searched in a ±1 window around the initial estimate.
         """
-        import cv2 as _cv2
+        # (cols_to_sample, row_index)
+        # Row 5 (bombs/LIFE) is intentionally excluded: on streams with a 4.5×
+        # vertical scale (1080÷240), the bomb digit sits 1px lower than the
+        # global grid offset predicts, causing it to score poorly at the correct
+        # dy.  Rows 1, 2, 4 are consistently aligned and give reliable dy signal.
+        _ROW_SPECS = (
+            ((12, 13, 14), 2),   # rupees (3 cols)
+            ((8,),         1),   # dungeon level
+            ((13,),        4),   # keys
+        )
         best_dx = initial_dx
+        best_dy = initial_dy
         best_score = -1.0
-        for candidate_dx in range(8):
-            total = 0.0
-            for col in (12, 13, 14):
-                x = col * 8 + candidate_dx
-                y = 2 * 8 + dy
-                if x + 8 > 256 or y + 8 > 240:
+        dy_lo = max(0, initial_dy - 1)
+        dy_hi = min(8, initial_dy + 2)
+        for candidate_dy in range(dy_lo, dy_hi):
+            for candidate_dx in range(8):
+                row_avgs = []
+                for cols, row in _ROW_SPECS:
+                    row_total = 0.0
+                    row_count = 0
+                    for col in cols:
+                        x = col * 8 + candidate_dx
+                        y = row * 8 + candidate_dy
+                        if x + 8 > 256 or y + 8 > 240:
+                            continue
+                        tile = frame[y:y + 8, x:x + 8]
+                        if float(np.mean(tile)) < 10:
+                            continue
+                        _, score = self.digit_reader.read_digit_with_score(tile)
+                        row_total += score
+                        row_count += 1
+                    if row_count > 0:
+                        row_avgs.append(row_total / row_count)
+                if not row_avgs:
                     continue
-                tile = frame[y:y + 8, x:x + 8]
-                if float(np.mean(tile)) < 10:
-                    continue
-                _, score = self.digit_reader.read_digit_with_score(tile)
-                total += score
-            if total > best_score:
-                best_score = total
-                best_dx = candidate_dx
-        return best_dx
+                # Use minimum per-row average: any misaligned row pulls score down
+                quality = min(row_avgs)
+                if quality > best_score:
+                    best_score = quality
+                    best_dx = candidate_dx
+                    best_dy = candidate_dy
+        return best_dx, best_dy
 
     def detect(self, frame: np.ndarray) -> GameState:
         """Detect game state from a canonical 256x240 BGR NES frame.
@@ -133,7 +174,7 @@ class NesStateDetector:
             alignment = find_grid_alignment(frame)
             if alignment:
                 dx, dy, _ = alignment
-                dx = self._refine_grid_dx(frame, dx, dy)
+                dx, dy = self._refine_grid(frame, dx, dy)
                 self._set_grid_offset(dx, dy)
 
         # Classify screen type
@@ -155,6 +196,10 @@ class NesStateDetector:
         # Read HUD elements (only when the Zelda HUD is actually present).
         if (state.screen_type in ('overworld', 'dungeon', 'cave')
                 and self.hud_reader.is_hud_present(frame)):
+            # Run HUD calibration
+            self.calibrator.calibrate(frame, frame_num=getattr(self, '_frame_count', 0))
+            self._frame_count = getattr(self, '_frame_count', 0) + 1
+
             # Read dungeon level first — it can correct screen_type for bright
             # dungeons that the brightness-based classifier mistakes for overworld
             state.dungeon_level = self.hud_reader.read_dungeon_level(
@@ -177,6 +222,10 @@ class NesStateDetector:
             state.sword_level = self.hud_reader.read_sword(frame)
             state.b_item = self.hud_reader.read_b_item(frame, self.item_reader)
 
+            # Update player item tracking
+            self.player_items.update_from_b_item(state.b_item)
+            self.player_items.update_sword_level(state.sword_level)
+
             # LIFE/ROAR detection (Gannon proximity)
             state.gannon_nearby = self.hud_reader.read_life_roar(frame)
 
@@ -185,9 +234,14 @@ class NesStateDetector:
                 state.gannon_nearby = self.ganon_detector.detect(
                     frame, state.screen_type, state.dungeon_level)
 
-            # Minimap position (use corrected screen_type for grid selection)
-            is_dungeon = state.screen_type == 'dungeon'
-            state.map_position = self.hud_reader.read_minimap_position(frame, is_dungeon)
+            # Minimap reading (replaces old minimap position)
+            minimap_result = self.minimap.read(frame, state.screen_type, state.dungeon_level)
+            state.map_position = minimap_result.map_position
+            state.dungeon_map_rooms = minimap_result.dungeon_map_rooms
+            state.triforce_room = minimap_result.triforce_room
+            state.zelda_room = minimap_result.zelda_room
+            state.tile_match_id = minimap_result.tile_match_id
+            state.tile_match_score = minimap_result.tile_match_score
 
             # Item detection in game area (triforce pieces, etc.)
             items = self.item_detector.detect_items(frame, state.screen_type)
