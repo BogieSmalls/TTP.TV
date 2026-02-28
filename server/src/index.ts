@@ -34,6 +34,7 @@ import { ReplayOrchestrator } from './race/ReplayOrchestrator.js';
 import { VodIngestionService } from './knowledge/VodIngestionService.js';
 import { RaceHistoryImporter } from './knowledge/RaceHistoryImporter.js';
 import { VisionWorkerManager } from './vision/VisionWorkerManager.js';
+import { templateRouter } from './vision/templateServer.js';
 
 async function main() {
   // ─── Augment PATH with tool directories ───
@@ -358,6 +359,9 @@ async function main() {
   // Serve overworld room tiles for map position review
   const roomTilesPath = resolve(import.meta.dirname, '../../content/overworld_rooms');
   app.use('/api/learn/rooms', express.static(roomTilesPath));
+
+  // Vision template endpoint (WebGPU pipeline)
+  app.use('/api/vision', templateRouter);
 
   // API routes
   const apiRouter = createApiRoutes({

@@ -1,6 +1,15 @@
 'use strict';
 
 import { scanCalibration } from './calibration.js';
+import { GpuContext } from './gpu.js';
+
+const gpu = new GpuContext();
+let gpuReady = false;
+
+gpu.init().then(() => {
+  gpuReady = true;
+  console.log('GPU ready');
+}).catch(e => console.error('GPU init failed:', e));
 
 const params = new URLSearchParams(location.search);
 const racerId = params.get('racerId');
@@ -32,7 +41,9 @@ function onVideoFrame(now, metadata) {
   if (frameCount % 30 === 0 && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'heartbeat', racerId, frameCount }));
   }
-  // TODO: dispatch WebGPU compute passes (added in Tasks 6-15)
+  if (gpuReady) {
+    // TODO: dispatch compute passes (Task 6)
+  }
   video.requestVideoFrameCallback(onVideoFrame);
 }
 
