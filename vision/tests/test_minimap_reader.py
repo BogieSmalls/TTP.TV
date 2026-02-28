@@ -1,4 +1,6 @@
+import os
 import numpy as np
+import pytest
 from detector.minimap_reader import MinimapReader, MinimapResult
 from detector.hud_calibrator import HudCalibrator, CalibrationResult
 
@@ -149,3 +151,36 @@ def test_l9_flashing_dot_is_zelda_room():
     result = mm.read(curr, screen_type='dungeon', dungeon_level=9)
     assert result.zelda_room is not None
     assert result.triforce_room is None
+
+
+def test_load_ow_template_returns_array():
+    """Loading C1_R1.jpg should return a numpy array if file exists."""
+    cal = _make_locked_calibrator()
+    mm = MinimapReader(calibrator=cal, overworld_rooms_dir='content/overworld_rooms')
+    if not os.path.exists('content/overworld_rooms/C1_R1.jpg'):
+        pytest.skip('overworld_rooms not present in test cwd')
+    tmpl = mm._load_ow_template(col=1, row=1)
+    assert tmpl is not None
+    assert tmpl.shape[2] == 3  # BGR
+
+
+def test_histogram_similarity_identical_images():
+    """Same image compared to itself should score 1.0."""
+    cal = _make_locked_calibrator()
+    mm = MinimapReader(calibrator=cal)
+    img = np.random.randint(0, 255, (176, 256, 3), dtype=np.uint8)
+    score = mm._histogram_similarity(img, img)
+    assert score > 0.99
+
+
+def test_histogram_similarity_different_images():
+    """All-red vs all-blue should score well below match threshold.
+    Note: score is ~0.33 because both share identical zero-green histograms."""
+    cal = _make_locked_calibrator()
+    mm = MinimapReader(calibrator=cal)
+    red = np.zeros((176, 256, 3), dtype=np.uint8)
+    red[:, :, 2] = 255
+    blue = np.zeros((176, 256, 3), dtype=np.uint8)
+    blue[:, :, 0] = 255
+    score = mm._histogram_similarity(red, blue)
+    assert score < 0.5  # well below TILE_MATCH_THRESHOLD (0.80)

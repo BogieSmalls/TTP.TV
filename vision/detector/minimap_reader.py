@@ -143,6 +143,64 @@ class MinimapReader:
         row = max(1, min(MINIMAP_NES_ROWS, int(cy / cell_h) + 1))
         return col, row
 
+    def _load_ow_template(self, col: int, row: int) -> np.ndarray | None:
+        """Load overworld room reference tile; cache in memory."""
+        key = (col - 1) * MINIMAP_NES_ROWS + (row - 1)  # 0-based room index
+        if key in self._ow_templates:
+            return self._ow_templates[key]
+        path = self._rooms_dir / f'C{col}_R{row}.jpg'
+        if not path.exists():
+            return None
+        img = cv2.imread(str(path))
+        self._ow_templates[key] = img
+        return img
+
+    def _histogram_similarity(self, a: np.ndarray, b: np.ndarray) -> float:
+        """Normalized histogram dot product similarity (0-1) between two BGR images."""
+        b_resized = cv2.resize(b, (a.shape[1], a.shape[0]),
+                               interpolation=cv2.INTER_AREA)
+        score = 0.0
+        for ch in range(3):
+            h_a = cv2.calcHist([a], [ch], None, [64], [0, 256]).flatten()
+            h_b = cv2.calcHist([b_resized], [ch], None, [64], [0, 256]).flatten()
+            norm_a = np.linalg.norm(h_a)
+            norm_b = np.linalg.norm(h_b)
+            if norm_a > 0 and norm_b > 0:
+                score += float(np.dot(h_a / norm_a, h_b / norm_b))
+        return score / 3.0
+
+    def _identify_overworld_tile(self, frame: np.ndarray,
+                                  minimap_col: int, minimap_row: int
+                                  ) -> tuple[int | None, float]:
+        """Compare gameplay area against reference tiles; return (room_id, score)."""
+        gameplay = frame[64:240, :, :]  # below HUD
+        # Pass 1: minimap prior
+        tmpl = self._load_ow_template(minimap_col, minimap_row)
+        if tmpl is not None:
+            score = self._histogram_similarity(gameplay, tmpl)
+            if score >= TILE_MATCH_THRESHOLD:
+                room_id = (minimap_row - 1) * MINIMAP_OW_COLS + (minimap_col - 1)
+                return room_id, score
+
+        # Pass 2: 3x3 neighborhood
+        best_id, best_score = None, 0.0
+        for dc in (-1, 0, 1):
+            for dr in (-1, 0, 1):
+                if dc == 0 and dr == 0:
+                    continue
+                nc, nr = minimap_col + dc, minimap_row + dr
+                if not (1 <= nc <= MINIMAP_OW_COLS and 1 <= nr <= MINIMAP_NES_ROWS):
+                    continue
+                tmpl = self._load_ow_template(nc, nr)
+                if tmpl is None:
+                    continue
+                score = self._histogram_similarity(gameplay, tmpl)
+                if score > best_score:
+                    best_score = score
+                    if score >= TILE_MATCH_THRESHOLD:
+                        best_id = (nr - 1) * MINIMAP_OW_COLS + (nc - 1)
+        return best_id, best_score
+
     def _detect_faint_gray_dot(self, minimap: np.ndarray, grid: dict,
                                 exclude: tuple[int, int] | None
                                 ) -> tuple[int, int] | None:
@@ -209,6 +267,13 @@ class MinimapReader:
                     result.triforce_room = flashing
             result.collected_triforce = self._detect_faint_gray_dot(
                 minimap, grid, exclude=dot)
+
+        # Overworld tile recognition
+        if not is_dungeon and result.col > 0 and result.row > 0:
+            tile_id, tile_score = self._identify_overworld_tile(
+                frame, result.col, result.row)
+            result.tile_match_id = tile_id
+            result.tile_match_score = tile_score
 
         self._prev_frame = frame.copy()
         return result
