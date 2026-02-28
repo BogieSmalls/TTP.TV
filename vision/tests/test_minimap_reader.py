@@ -90,3 +90,62 @@ def test_link_dot_detected_in_dungeon_minimap():
     assert result.mode == 'dungeon'
     assert result.col >= 1
     assert result.row >= 1
+
+
+def test_dungeon_map_bitmask_detected():
+    """Blue cell backgrounds → dungeon_map_rooms bitmask set."""
+    cal = _make_locked_calibrator()
+    mm = MinimapReader(calibrator=cal)
+    frame = _make_frame()
+    # Paint blue at dungeon minimap cell col=1,row=1 (1-based)
+    # Minimap region: frame[13:45, 16:80]
+    # Col1,Row1 in minimap region coords: x=0..8, y=0..4
+    # In frame coords: x=16..24, y=13..17
+    frame[13:17, 16:24, 0] = 200  # B channel (blue)
+    frame[13:17, 16:24, 1] = 30
+    frame[13:17, 16:24, 2] = 30
+    result = mm.read(frame, screen_type='dungeon', dungeon_level=3)
+    assert result.dungeon_map_rooms is not None
+    assert result.dungeon_map_rooms > 0
+
+
+def test_flashing_dot_detected_as_triforce_room():
+    """Red dot present in one frame but not the previous = triforce room."""
+    cal = _make_locked_calibrator()
+    mm = MinimapReader(calibrator=cal)
+
+    # prev frame: bright Link dot at col1,row1; no red elsewhere
+    prev = _make_frame()
+    # Link dot in frame coords: y=15..17, x=20..22 (col1, row1 center)
+    prev[15:17, 20:22, :] = 255   # Link dot at col1,row1
+
+    # current frame: same Link dot + red dot at col2,row2
+    curr = _make_frame()
+    curr[15:17, 20:22, :] = 255   # Link dot
+    # Red dot at col2,row2 in frame coords:
+    # minimap region col2,row2 center: x=8+4=12, y=4+2=6
+    # frame coords: y=13+6=19, x=16+12=28
+    curr[19:21, 28:30, 2] = 220   # Red dot (triforce)
+    curr[19:21, 28:30, 1] = 20
+    curr[19:21, 28:30, 0] = 20
+
+    mm._prev_frame = prev
+    result = mm.read(curr, screen_type='dungeon', dungeon_level=3)
+    assert result.triforce_room is not None
+
+
+def test_l9_flashing_dot_is_zelda_room():
+    """In dungeon_level=9, flashing dot is zelda_room not triforce_room."""
+    cal = _make_locked_calibrator()
+    mm = MinimapReader(calibrator=cal)
+    prev = _make_frame()
+    prev[15:17, 20:22, :] = 255
+    curr = _make_frame()
+    curr[15:17, 20:22, :] = 255
+    curr[19:21, 28:30, 2] = 220
+    curr[19:21, 28:30, 1] = 20
+    curr[19:21, 28:30, 0] = 20
+    mm._prev_frame = prev
+    result = mm.read(curr, screen_type='dungeon', dungeon_level=9)
+    assert result.zelda_room is not None
+    assert result.triforce_room is None

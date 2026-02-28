@@ -101,6 +101,69 @@ class MinimapReader:
         row = max(1, min(MINIMAP_NES_ROWS, int(cy / map_h * MINIMAP_NES_ROWS) + 1))
         return col, row
 
+    def _detect_dungeon_map(self, minimap: np.ndarray, grid: dict) -> int:
+        """Scan 64 dungeon cells for royal blue backgrounds; return bitmask."""
+        bitmask = 0
+        cell_h = grid['cell_h']
+        cell_w = grid['cell_w_dungeon']
+        for row in range(MINIMAP_NES_ROWS):
+            for col in range(MINIMAP_DG_COLS):
+                y0 = int(row * cell_h)
+                x0 = int(col * cell_w)
+                y1 = min(int(y0 + cell_h), minimap.shape[0])
+                x1 = min(int(x0 + cell_w), minimap.shape[1])
+                cell = minimap[y0:y1, x0:x1]
+                if cell.size == 0:
+                    continue
+                b = cell[:, :, 0].astype(int)
+                r = cell[:, :, 2].astype(int)
+                g = cell[:, :, 1].astype(int)
+                blue_px = int(np.sum((b > 150) & (b > r * 2) & (b > g * 2)))
+                if blue_px >= 2:
+                    bitmask |= 1 << (row * MINIMAP_DG_COLS + col)
+        return bitmask
+
+    def _detect_flashing_dot(self, curr: np.ndarray, prev: np.ndarray,
+                              grid: dict) -> tuple[int, int] | None:
+        """Find red dot present now but not in prev frame (flashing)."""
+        r_curr = curr[:, :, 2].astype(int)
+        g_curr = curr[:, :, 1].astype(int)
+        b_curr = curr[:, :, 0].astype(int)
+        r_prev = prev[:, :, 2].astype(int)
+        red_now = (r_curr > 150) & (r_curr > g_curr * 2) & (r_curr > b_curr * 2)
+        red_before = r_prev > 100
+        flashing = red_now & ~red_before
+        if flashing.sum() < 2:
+            return None
+        coords = np.argwhere(flashing)
+        cy, cx = float(np.mean(coords[:, 0])), float(np.mean(coords[:, 1]))
+        cell_w = grid['cell_w_dungeon']
+        cell_h = grid['cell_h']
+        col = max(1, min(MINIMAP_DG_COLS, int(cx / cell_w) + 1))
+        row = max(1, min(MINIMAP_NES_ROWS, int(cy / cell_h) + 1))
+        return col, row
+
+    def _detect_faint_gray_dot(self, minimap: np.ndarray, grid: dict,
+                                exclude: tuple[int, int] | None
+                                ) -> tuple[int, int] | None:
+        """Find faint static gray dot (collected triforce marker)."""
+        gray = np.mean(minimap, axis=2)
+        faint_mask = ((gray > 40) & (gray < 90)).astype(np.uint8)
+        if faint_mask.sum() < 2:
+            return None
+        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(faint_mask)
+        if num_labels <= 1:
+            return None
+        best_label = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+        cy, cx = centroids[best_label][1], centroids[best_label][0]
+        cell_w = grid['cell_w_dungeon']
+        cell_h = grid['cell_h']
+        col = max(1, min(MINIMAP_DG_COLS, int(cx / cell_w) + 1))
+        row = max(1, min(MINIMAP_NES_ROWS, int(cy / cell_h) + 1))
+        if exclude and (col, row) == exclude:
+            return None  # same cell as Link — not a separate dot
+        return col, row
+
     def read(self, frame: np.ndarray, screen_type: str,
              dungeon_level: int = 0) -> MinimapResult:
         """Read minimap position and metadata from frame."""
@@ -130,6 +193,22 @@ class MinimapReader:
             result.col, result.row = dot
             cols = MINIMAP_DG_COLS if is_dungeon else MINIMAP_OW_COLS
             result.map_position = (result.row - 1) * cols + (result.col - 1)
+
+        # Dungeon map bitmask (blue cell backgrounds)
+        if is_dungeon:
+            result.dungeon_map_rooms = self._detect_dungeon_map(minimap, grid)
+
+        # Multi-dot detection: flashing red (triforce/Zelda) and faint gray
+        if is_dungeon and self._prev_frame is not None:
+            prev_minimap = self._prev_frame[y1:y2, x1:x2]
+            flashing = self._detect_flashing_dot(minimap, prev_minimap, grid)
+            if flashing is not None:
+                if dungeon_level == 9:
+                    result.zelda_room = flashing
+                else:
+                    result.triforce_room = flashing
+            result.collected_triforce = self._detect_faint_gray_dot(
+                minimap, grid, exclude=dot)
 
         self._prev_frame = frame.copy()
         return result
