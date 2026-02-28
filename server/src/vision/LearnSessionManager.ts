@@ -1,5 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process';
-import { resolve } from 'node:path';
+import type { ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { logger } from '../logger.js';
@@ -182,86 +181,13 @@ export class LearnSessionManager extends EventEmitter {
 
     this.sessions.set(id, session);
 
-    // Build Python command
-    const projectRoot = resolve(import.meta.dirname, '../../..');
-    const visionDir = resolve(projectRoot, 'vision');
-    const templateDir = resolve(visionDir, 'templates');
-
-    // Resolve pythonPath relative to project root (handles ./vision/.venv/... paths)
-    const pythonPath = resolve(projectRoot, this.config.vision.pythonPath);
-
-    const args = [
-      resolve(visionDir, 'learn_mode.py'),
-      '--source', opts.source,
-      '--fps', String(opts.fps ?? this.config.vision.fps),
-      '--templates', templateDir,
-      '--server', `http://127.0.0.1:${this.config.server.port}`,
-      '--session-id', id,
-    ];
-
-    if (opts.cropRegion) {
-      args.push('--crop', `${opts.cropRegion.x},${opts.cropRegion.y},${opts.cropRegion.w},${opts.cropRegion.h}`);
-    }
-
-    if (opts.startTime) {
-      args.push('--start-time', opts.startTime);
-    }
-    if (opts.endTime) {
-      args.push('--end-time', opts.endTime);
-    }
-
-    if (opts.snapshotInterval != null) {
-      args.push('--snapshot-interval', String(opts.snapshotInterval));
-    }
-
-    if (opts.maxSnapshots != null) {
-      args.push('--max-snapshots', String(opts.maxSnapshots));
-    }
-
-    if (opts.anyRoads) {
-      args.push('--any-roads', opts.anyRoads);
-    }
-
     try {
-      const proc = spawn(pythonPath, args, {
-        stdio: ['ignore', 'ignore', 'pipe'],
-        windowsHide: true,
-        cwd: visionDir,
-      });
-
-      this.processes.set(id, proc);
-
-      proc.on('error', (err) => {
-        logger.error(`[learn:${id}] Python spawn error: ${err.message}`);
-        session.status = 'error';
-        session.error = err.message;
-        this.emit('error', { sessionId: id, error: err.message });
-      });
-
-      proc.stderr?.on('data', (data: Buffer) => {
-        const msg = data.toString().trim();
-        if (msg) logger.info(`[learn:${id}] ${msg}`);
-      });
-
-      proc.on('exit', (code) => {
-        logger.info(`[learn:${id}] Python exited with code ${code}`);
-        this.processes.delete(id);
-
-        // If not already completed/cancelled, mark as error
-        if (session.status === 'starting' || session.status === 'running') {
-          if (code === 0) {
-            // Normal exit without report means it completed but we missed the POST
-            // The report POST handler will set the correct status
-          } else {
-            session.status = 'error';
-            session.error = `Process exited with code ${code}`;
-            this.emit('error', { sessionId: id, error: session.error });
-          }
-        }
-      });
-
-      session.status = 'running';
-      logger.info(`[learn:${id}] Session started for ${opts.source}`);
+      // Python vision pipeline disabled — WebGPU pipeline active
+      console.warn('Python vision pipeline disabled — WebGPU pipeline active');
+      logger.warn(`[learn:${id}] Python vision pipeline disabled — WebGPU pipeline active. learn_mode.py will not be spawned.`);
+      session.status = 'error';
+      session.error = 'Python vision pipeline disabled — WebGPU pipeline active';
+      this.emit('error', { sessionId: id, error: session.error });
     } catch (err) {
       session.status = 'error';
       session.error = err instanceof Error ? err.message : String(err);
