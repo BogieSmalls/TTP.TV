@@ -57,3 +57,35 @@ class CalibrationResult:
         px_x = int(round(self.anchor_x + nes_x * self.scale_x))
         px_y = int(round(self.anchor_y + nes_y * self.scale_y))
         return px_x, px_y
+
+
+class HudCalibrator:
+    """Detects HUD reference anchors and maintains a locked calibration result."""
+
+    # Scan bounds for LIFE text (generous to handle stream offsets)
+    _LIFE_SCAN_X1, _LIFE_SCAN_X2 = 160, 230
+    _LIFE_SCAN_Y1, _LIFE_SCAN_Y2 = 0, 64
+
+    def __init__(self) -> None:
+        self.result = CalibrationResult()
+        self._anchors = CalibrationAnchors()
+        self._gameplay_frames_seen = 0
+        self._last_spot_check = 0
+
+    def _detect_life_text(self, frame: np.ndarray) -> tuple[int | None, int | None]:
+        """Scan for the -LIFE- red text cluster; return (top_y, height) or (None, None)."""
+        region = frame[self._LIFE_SCAN_Y1:self._LIFE_SCAN_Y2,
+                       self._LIFE_SCAN_X1:self._LIFE_SCAN_X2]
+        r = region[:, :, 2].astype(np.int16)
+        g = region[:, :, 1].astype(np.int16)
+        b = region[:, :, 0].astype(np.int16)
+        red_mask = (r > 50) & (r > g * 2) & (r > b * 2)
+        if red_mask.sum() < 6:
+            return None, None
+        rows = np.any(red_mask, axis=1)
+        row_indices = np.where(rows)[0]
+        if len(row_indices) == 0:
+            return None, None
+        top_y = int(row_indices[0]) + self._LIFE_SCAN_Y1
+        bot_y = int(row_indices[-1]) + self._LIFE_SCAN_Y1
+        return top_y, max(1, bot_y - top_y + 1)

@@ -1,4 +1,10 @@
-from detector.hud_calibrator import CalibrationResult
+import numpy as np
+from detector.hud_calibrator import CalibrationResult, HudCalibrator
+
+
+def _make_frame() -> np.ndarray:
+    """Return a black 240x256x3 frame (BGR)."""
+    return np.zeros((240, 256, 3), dtype=np.uint8)
 
 
 def test_nes_to_px_identity():
@@ -33,3 +39,26 @@ def test_calibration_result_defaults_unlocked():
     assert result.locked is False
     assert result.confidence == 0.0
     assert result.source_frame == -1
+
+
+def test_detect_life_text_finds_red_cluster():
+    """Red pixel cluster at LIFE position should be found."""
+    cal = HudCalibrator()
+    frame = _make_frame()
+    # Paint red pixels at LIFE position: x=176-199, y=40-47
+    # Note: OpenCV uses BGR order
+    frame[40:48, 176:200, 2] = 220  # R channel (index 2 in BGR)
+    frame[40:48, 176:200, 1] = 20   # G channel (low)
+    frame[40:48, 176:200, 0] = 20   # B channel (low)
+    life_y, life_h = cal._detect_life_text(frame)
+    assert life_y is not None
+    assert 38 <= life_y <= 42  # within 2px of actual
+    assert 6 <= life_h <= 10   # within 2px of 8
+
+
+def test_detect_life_text_returns_none_on_dark_frame():
+    cal = HudCalibrator()
+    frame = _make_frame()
+    life_y, life_h = cal._detect_life_text(frame)
+    assert life_y is None
+    assert life_h is None
