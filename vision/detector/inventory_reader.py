@@ -74,12 +74,13 @@ class InventoryReader:
         self._scale_x = 1.0
         self._scale_y = 1.0
 
-    def set_native_crop(self, crop_frame, scale_x, scale_y):
+    def set_native_crop(self, crop_frame: np.ndarray,
+                        scale_x: float, scale_y: float) -> None:
         self._native_crop = crop_frame
         self._scale_x = scale_x
         self._scale_y = scale_y
 
-    def clear_native_crop(self):
+    def clear_native_crop(self) -> None:
         self._native_crop = None
 
     def read_items(self, frame: np.ndarray) -> dict:
@@ -147,9 +148,12 @@ class InventoryReader:
         # off-screen.  On a partial scroll, the subscreen content (dark) is
         # at the top, and the game area (bright) is still visible below.
         # Require: dark top (y=0-60) AND bright bottom (y=160-220).
-        if frame.shape[0] > 220:
-            top_bright = float(np.mean(frame[0:60, :, :]))
-            bottom_bright = float(np.mean(frame[160:220, :, :]))
+        if src.shape[0] > round(220 * self._scale_y):
+            top_y   = round(60  * self._scale_y)
+            bot_y1  = round(160 * self._scale_y)
+            bot_y2  = round(220 * self._scale_y)
+            top_bright    = float(np.mean(src[0:top_y, :, :]))
+            bottom_bright = float(np.mean(src[bot_y1:bot_y2, :, :]))
             if top_bright < 30 and bottom_bright > 80:
                 return True
 
