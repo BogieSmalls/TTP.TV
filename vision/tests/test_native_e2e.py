@@ -1,7 +1,18 @@
 # vision/tests/test_native_e2e.py
-"""End-to-end test: native-resolution detection on a real VOD frame.
+"""End-to-end tests: native-resolution detection on real VOD frames.
 
 Ground truth at t=451 of https://www.twitch.tv/videos/2696354137:
+  - screen_type: dungeon
+  - dungeon_level: 8
+  - b_item: blue_candle
+  - rupees: 59
+  - keys: 0
+  - bombs: 0
+  - hearts_current: 1
+  - hearts_max: 3
+  - has_half_heart: True
+
+Ground truth at t=1051 of https://www.twitch.tv/videos/2708726412:
   - screen_type: dungeon
   - dungeon_level: 8
   - b_item: red_candle
@@ -11,10 +22,13 @@ Ground truth at t=451 of https://www.twitch.tv/videos/2696354137:
   - hearts_current: 3
   - hearts_max: 3
 
-To download the fixture frame, run (requires streamlink + ffmpeg):
+To download the fixture frames, run (requires streamlink + ffmpeg):
   streamlink --stream-url https://www.twitch.tv/videos/2696354137 best \
     | ffmpeg -ss 451 -i pipe:0 -vframes 1 \
         vision/tests/fixtures/bogie_t451.png
+  streamlink --stream-url https://www.twitch.tv/videos/2708726412 best \
+    | ffmpeg -ss 1051 -i pipe:0 -vframes 1 \
+        vision/tests/fixtures/bogie_v2708_t1051.png
 """
 import os
 import numpy as np
@@ -24,6 +38,7 @@ from detector.nes_state import NesStateDetector
 
 FIXTURE_PNG = os.path.join(os.path.dirname(__file__), 'fixtures', 'bogie_t451.png')
 FIXTURE_BIN = os.path.join(os.path.dirname(__file__), 'fixtures', 'bogie_t451_raw.bin')
+FIXTURE_V2708 = os.path.join(os.path.dirname(__file__), 'fixtures', 'bogie_v2708_t1051.png')
 TEMPLATES = os.path.join(os.path.dirname(__file__), '..', 'templates')
 
 # Bogie's crop from data/report_064eb5b2.json (and all other Bogie VOD reports):
@@ -107,19 +122,82 @@ def test_bogie_t451_native_detection():
             f'Expected dungeon level 8, got {state.dungeon_level}'
 
     # HUD counters
+    assert state.rupees == 59, \
+        f'Expected 59 rupees, got {state.rupees}'
+    assert state.keys == 0, \
+        f'Expected 0 keys, got {state.keys}'
+    assert state.has_master_key is False, \
+        f'Expected has_master_key False, got {state.has_master_key}'
+    assert state.bombs == 0, \
+        f'Expected 0 bombs, got {state.bombs}'
+
+    # Hearts
+    assert state.hearts_current == 1, \
+        f'Expected 1 heart current, got {state.hearts_current}'
+    assert state.hearts_max == 3, \
+        f'Expected 3 hearts max, got {state.hearts_max}'
+    assert state.has_half_heart is True, \
+        f'Expected has_half_heart True, got {state.has_half_heart}'
+
+    # B-item
+    assert state.b_item == 'blue_candle', \
+        f'Expected b_item blue_candle, got {state.b_item!r}'
+
+
+@pytest.mark.skipif(
+    not os.path.exists(FIXTURE_V2708),
+    reason=(
+        'VOD fixture not downloaded. To create it run:\n'
+        '  streamlink --stream-url https://www.twitch.tv/videos/2708726412 best '
+        '| ffmpeg -ss 1051 -i pipe:0 -vframes 1 '
+        'vision/tests/fixtures/bogie_v2708_t1051.png'
+    )
+)
+def test_bogie_v2708_t1051_native_detection():
+    """Native-resolution detection on Bogie v2708 t=1051 matches known ground truth.
+
+    Verifies the full pipeline with a red_candle B-item and 3-bomb count.
+    Ground truth from https://www.twitch.tv/videos/2708726412 at 17:31.
+    """
+    frame = cv2.imread(FIXTURE_V2708)
+    assert frame is not None, 'Failed to load fixture frame from disk'
+
+    cx, cy, cw, ch = CROP
+
+    nes_region = frame[cy:cy + ch, cx:cx + cw]
+    nes_canonical = cv2.resize(nes_region, (256, 240), interpolation=cv2.INTER_NEAREST)
+
+    det = NesStateDetector(
+        os.path.abspath(TEMPLATES),
+        grid_offset=GRID_OFFSET,
+        life_row=LIFE_ROW,
+    )
+    det.set_native_frame(frame, cx, cy, cw, ch)
+    state = det.detect(nes_canonical)
+    det.clear_native_frame()
+
+    assert state.screen_type in ('dungeon', 'overworld', 'cave'), \
+        f'Expected gameplay screen, got {state.screen_type!r}'
+
+    if state.screen_type == 'dungeon':
+        assert state.dungeon_level == 8, \
+            f'Expected dungeon level 8, got {state.dungeon_level}'
+
     assert state.rupees == 3, \
         f'Expected 3 rupees, got {state.rupees}'
     assert state.keys == 0, \
         f'Expected 0 keys, got {state.keys}'
+    assert state.has_master_key is False, \
+        f'Expected has_master_key False, got {state.has_master_key}'
     assert state.bombs == 3, \
         f'Expected 3 bombs, got {state.bombs}'
 
-    # Hearts
     assert state.hearts_current == 3, \
         f'Expected 3 hearts current, got {state.hearts_current}'
     assert state.hearts_max == 3, \
         f'Expected 3 hearts max, got {state.hearts_max}'
+    assert state.has_half_heart is False, \
+        f'Expected has_half_heart False, got {state.has_half_heart}'
 
-    # B-item
     assert state.b_item == 'red_candle', \
         f'Expected b_item red_candle, got {state.b_item!r}'
