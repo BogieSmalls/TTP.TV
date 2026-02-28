@@ -1,4 +1,3 @@
-import pytest
 from detector.hud_calibrator import CalibrationResult
 
 
@@ -20,6 +19,13 @@ def test_nes_to_px_with_offset():
     result = CalibrationResult(anchor_x=0.0, anchor_y=5.0, scale_x=1.0, scale_y=1.0)
     assert result.nes_to_px(0, 0) == (0, 5)
     assert result.nes_to_px(10, 40) == (10, 45)
+
+
+def test_nes_to_px_combined_scale_and_offset():
+    """Scale and offset applied together: anchor + nes_coord * scale."""
+    result = CalibrationResult(anchor_x=10.0, anchor_y=20.0, scale_x=4.0, scale_y=3.0)
+    # x: 10 + 5*4 = 30.  y: 20 + 8*3 = 44
+    assert result.nes_to_px(5, 8) == (30, 44)
 
 
 def test_calibration_result_defaults_unlocked():

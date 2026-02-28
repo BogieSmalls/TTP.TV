@@ -6,12 +6,12 @@ pixel coordinates to canonical frame pixel coordinates.
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, field
-import numpy as np
+from dataclasses import dataclass
+import numpy as np  # used by anchor detection methods added in Tasks 2-4
 
 
 # ─── NES reference constants ──────────────────────────────────────────────────
-# All y values are top-of-region in canonical NES 256x240 space.
+# All coordinates are in canonical NES 256x240 space.
 LIFE_NES_Y = 40          # LIFE text row 5 top
 LIFE_NES_X = 176         # LIFE text col 22 left edge
 GAMEPLAY_NES_Y = 64      # first row of game area (below HUD)
@@ -20,7 +20,7 @@ KEY_ROW_NES_Y = 35       # center of key digit row 4
 BOMB_ROW_NES_Y = 43      # center of bomb digit row 5
 B_ITEM_NES_X = 128       # B-item sprite left edge (col 16)
 A_ITEM_NES_X = 152       # A-item/sword left edge (col 19)
-B_TO_A_NES_PX = 24       # A_ITEM_NES_X - B_ITEM_NES_X
+B_TO_A_NES_PX = A_ITEM_NES_X - B_ITEM_NES_X
 HIGH_CONFIDENCE = 0.85   # lock threshold
 SPOT_CHECK_INTERVAL = 300  # gameplay frames between spot-checks
 DRIFT_WARNING_PX = 3     # warn if locked values drift > this many pixels
