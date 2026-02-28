@@ -105,7 +105,7 @@ def test_detect_gameplay_boundary():
     frame[68:, :, 1] = 80  # green tint in game area
     boundary_y = cal._detect_gameplay_boundary(frame, life_y=40)
     assert boundary_y is not None
-    assert 66 <= boundary_y <= 72
+    assert 68 <= boundary_y <= 72
 
 
 def test_detect_b_a_borders():
@@ -150,3 +150,5 @@ def test_detect_minimap_gray_rect():
     x, y, w, h = rect
     assert abs(x - 16) <= 4
     assert abs(y - 12) <= 4
+    assert abs(w - 64) <= 4  # full minimap width ≈ 64px
+    assert abs(h - 40) <= 4  # full minimap height ≈ 40px
