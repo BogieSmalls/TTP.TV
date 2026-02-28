@@ -285,6 +285,70 @@ class FloorItemTracker:
         self._grace_remaining = 0
 
 
+class PlayerItemTracker:
+    """Tracks items the player has obtained. State only ever increases.
+
+    Vocabulary: Vision *identifies* items; this tracker records that the player
+    has *obtained* them.
+    """
+
+    # One-way upgrade pairs: obtaining the right item clears the left
+    _UPGRADES: list[tuple[str, str]] = [
+        ('blue_candle', 'red_candle'),
+        ('blue_ring', 'red_ring'),
+        ('boomerang', 'magical_boomerang'),
+    ]
+
+    def __init__(self) -> None:
+        self._items: dict[str, bool] = {}
+        self.sword_level: int = 0    # 0–3, never decreases
+        self.arrows_level: int = 0   # 0=none, 1=wooden, 2=silver, never decreases
+
+    def update_from_b_item(self, b_item: str | None) -> None:
+        """Process a newly identified B-item slot value."""
+        if b_item is None:
+            return
+        self._set(b_item, True)
+        if b_item == 'arrows':
+            # Arrows in B-slot definitively means Bow is in inventory
+            self._set('bow', True)
+            # At minimum wooden arrows (level 1)
+            self.arrows_level = max(self.arrows_level, 1)
+
+    def update_item_obtained(self, item: str) -> None:
+        """Record that the player obtained a specific item."""
+        self._set(item, True)
+
+    def update_sword_level(self, level: int) -> None:
+        """Sword level never decreases."""
+        self.sword_level = max(self.sword_level, level)
+
+    def update_arrows_level(self, level: int) -> None:
+        """Arrows level never decreases. Does NOT set bow."""
+        self.arrows_level = max(self.arrows_level, level)
+
+    def merge_subscreen(self, subscreen_items: dict[str, bool]) -> None:
+        """Merge a subscreen scan: True values override; False values ignored if we already know True."""
+        for item, value in subscreen_items.items():
+            if value:
+                self._set(item, True)
+            # False: only accept if we have no prior True
+            elif not self._items.get(item, False):
+                self._items[item] = False
+
+    def get_items(self) -> dict[str, bool]:
+        return dict(self._items)
+
+    def _set(self, item: str, value: bool) -> None:
+        self._items[item] = value
+        if not value:
+            return
+        # Apply one-way upgrades: obtaining the superior item clears the inferior
+        for inferior, superior in self._UPGRADES:
+            if item == superior:
+                self._items[inferior] = False
+
+
 class GameLogicValidator:
     """Validates state transitions against Zelda 1 game rules.
 
