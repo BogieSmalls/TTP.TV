@@ -408,15 +408,22 @@ def main():
                               f'dx={grid_dx} dy={grid_dy} life_row={life_row} '
                               f'(frame {frame_count + 1})', file=sys.stderr)
 
-        # Enable stream-resolution tile extraction for HUD reading.
-        # Maps NES pixel coords → stream coords and extracts at native
-        # resolution, bypassing distortion from non-integer resize ratios.
-        if landmarks and sub_crop is None:
-            detector.hud_reader.set_stream_source(
-                frame, crop_x, crop_y, crop_w, crop_h)
+        # Always use native resolution for all detectors.
+        # Compute effective crop: if sub_crop was applied, the actual NES region
+        # in stream space is offset by (sx, sy) within the original crop.
+        if sub_crop is not None:
+            sx, sy, sw, sh = sub_crop
+            eff_crop_x = crop_x + sx
+            eff_crop_y = crop_y + sy
+            eff_crop_w = sw
+            eff_crop_h = sh
+        else:
+            eff_crop_x, eff_crop_y = crop_x, crop_y
+            eff_crop_w, eff_crop_h = crop_w, crop_h
 
+        detector.set_native_frame(frame, eff_crop_x, eff_crop_y, eff_crop_w, eff_crop_h)
         process_frame(nes_canonical)
-        detector.hud_reader.clear_stream_source()
+        detector.clear_native_frame()
 
         # Overwrite live preview frame for VisionLab
         cv2.imwrite(frame_out_path, nes_canonical, [cv2.IMWRITE_JPEG_QUALITY, 75])
