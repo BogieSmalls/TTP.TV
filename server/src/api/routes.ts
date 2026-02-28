@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { Router } from 'express';
 import { v4 as uuid } from 'uuid';
 import type { Server as SocketIOServer } from 'socket.io';
@@ -614,6 +615,11 @@ export function createApiRoutes(ctx: RouteContext): Router {
     res.json({ racerId: req.params.racerId, state });
   });
 
+  router.get('/vision/:racerId/frame', (req, res) => {
+    const framePath = resolve(import.meta.dirname, '../../../data', `vision-frame-${req.params.racerId}.jpg`);
+    res.sendFile(framePath, (err) => { if (err) res.status(404).end(); });
+  });
+
   router.get('/vision', (_req, res) => {
     const bridges = ctx.visionManager.getActiveBridges();
     const states: Record<string, unknown> = {};
@@ -648,13 +654,13 @@ export function createApiRoutes(ctx: RouteContext): Router {
   // ─── Vision VOD (ad-hoc VOD → VisionLab) ───
 
   router.post('/vision-vod/start', async (req, res) => {
-    const { racerId, vodUrl, profileId } = req.body as { racerId?: string; vodUrl?: string; profileId?: string };
+    const { racerId, vodUrl, profileId, startTime } = req.body as { racerId?: string; vodUrl?: string; profileId?: string; startTime?: string };
     if (!racerId || !vodUrl || !profileId) {
       res.status(400).json({ error: 'racerId, vodUrl, and profileId are required' });
       return;
     }
     try {
-      await ctx.visionManager.startVisionVod(racerId, vodUrl, profileId);
+      await ctx.visionManager.startVisionVod(racerId, vodUrl, profileId, startTime);
       res.json({ status: 'started', racerId, vodUrl });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

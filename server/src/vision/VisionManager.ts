@@ -82,7 +82,7 @@ export class VisionManager {
   /**
    * Start vision pipeline for a racer sourced from a VOD URL (via streamlink).
    */
-  async startVisionVod(racerId: string, vodUrl: string, profileId: string): Promise<void> {
+  async startVisionVod(racerId: string, vodUrl: string, profileId: string, startTime?: string): Promise<void> {
     if (this.bridges.has(racerId)) {
       logger.warn(`[VisionManager] Vision already running for ${racerId}`);
       return;
@@ -92,7 +92,7 @@ export class VisionManager {
 
     const options: VisionBridgeOptions = {
       racerId,
-      source: { type: 'vod', url: vodUrl },
+      source: { type: 'vod', url: vodUrl, startTime },
       cropRegion: {
         x: cropData.x,
         y: cropData.y,

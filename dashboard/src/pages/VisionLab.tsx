@@ -87,11 +87,13 @@ export default function VisionLab() {
   const [events, setEvents] = useState<FlatEvent[]>([]);
   const [visitedRooms, setVisitedRooms] = useState<Record<string, Set<string>>>({});
   const [deathTimes, setDeathTimes] = useState<Record<string, number[]>>({});
+  const [frameTicks, setFrameTicks] = useState<Record<string, number>>({});
   const nextId = useRef(0);
 
   // VOD session form
   const [pool, setPool] = useState<PoolRacer[]>([]);
   const [vodUrl, setVodUrl] = useState('');
+  const [vodStartTime, setVodStartTime] = useState('');
   const [vodProfileId, setVodProfileId] = useState('');
   const [vodRacerId, setVodRacerId] = useState('');
   const [vodActive, setVodActive] = useState<string | null>(null); // racerId of running session
@@ -116,7 +118,7 @@ export default function VisionLab() {
       const res = await fetch('/api/vision-vod/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ racerId: vodRacerId, vodUrl, profileId: vodProfileId }),
+        body: JSON.stringify({ racerId: vodRacerId, vodUrl, profileId: vodProfileId, startTime: vodStartTime || undefined }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Failed to start');
@@ -145,6 +147,7 @@ export default function VisionLab() {
 
   const handleVision = useCallback((data: VisionState) => {
     setStates(prev => ({ ...prev, [data.racerId]: data }));
+    setFrameTicks(prev => ({ ...prev, [data.racerId]: (prev[data.racerId] ?? 0) + 1 }));
 
     // Track visited rooms for minimap dimming
     const pos = decodePosition(data.map_position, data.screen_type);
@@ -235,6 +238,18 @@ export default function VisionLab() {
               value={vodUrl}
               disabled={!!vodActive || vodBusy}
               onChange={e => setVodUrl(e.target.value)}
+              className="text-sm rounded px-2 py-1.5"
+              style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
+            />
+          </div>
+          <div className="flex flex-col gap-1" style={{ width: 90 }}>
+            <label className="text-xs" style={{ color: 'var(--text-muted)' }}>Start (HH:MM:SS)</label>
+            <input
+              type="text"
+              placeholder="0:00:00"
+              value={vodStartTime}
+              disabled={!!vodActive || vodBusy}
+              onChange={e => setVodStartTime(e.target.value)}
               className="text-sm rounded px-2 py-1.5"
               style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
             />
@@ -337,6 +352,13 @@ export default function VisionLab() {
                     </span>
                   </div>
                 </div>
+
+                {/* Live frame preview */}
+                <img
+                  src={`/api/vision/${s.racerId}/frame?t=${frameTicks[s.racerId] ?? 0}`}
+                  alt="vision frame"
+                  style={{ width: '100%', borderRadius: 4, imageRendering: 'pixelated', display: 'block' }}
+                />
 
                 {/* Visual minimap */}
                 {pos && isOverworld && (

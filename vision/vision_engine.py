@@ -67,6 +67,12 @@ def main():
     frame_count = 0
     start_time = time.time()
 
+    # Live frame preview — overwritten on every tick, served by the dashboard
+    import os as _os_live
+    _data_dir = _os_live.path.join(_os_live.path.dirname(_os_live.path.abspath(__file__)), '..', 'data')
+    _os_live.makedirs(_data_dir, exist_ok=True)
+    frame_out_path = _os_live.path.join(_data_dir, f'vision-frame-{args.racer}.jpg')
+
     # Fields that should only update when on the subscreen
     SUBSCREEN_ONLY_FIELDS = {'items', 'triforce'}
 
@@ -411,6 +417,9 @@ def main():
 
         process_frame(nes_canonical)
         detector.hud_reader.clear_stream_source()
+
+        # Overwrite live preview frame for VisionLab
+        cv2.imwrite(frame_out_path, nes_canonical, [cv2.IMWRITE_JPEG_QUALITY, 75])
 
 
 if __name__ == '__main__':

@@ -6,7 +6,7 @@ import type { Config } from '../config.js';
 
 export type InputSource =
   | { type: 'rtmp'; streamKey: string }
-  | { type: 'vod'; url: string }
+  | { type: 'vod'; url: string; startTime?: string }
   | { type: 'file'; path: string }
   | { type: 'url'; url: string };
 
@@ -72,6 +72,9 @@ export class FrameExtractor extends EventEmitter {
         const slArgs = [source.url, 'best', '-O'];
         if (this.twitchToken) {
           slArgs.push('--twitch-api-header', `Authorization=OAuth ${this.twitchToken}`);
+        }
+        if (source.startTime) {
+          slArgs.push('--hls-start-offset', source.startTime);
         }
         this.streamlinkProc = spawn(this.streamlinkPath, slArgs, {
           stdio: ['ignore', 'pipe', 'pipe'],
