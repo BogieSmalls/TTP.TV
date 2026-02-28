@@ -55,6 +55,28 @@ class TriforceReader:
 
     def __init__(self, grid_offset: tuple[int, int] = (1, 2)):
         self.grid_dx, self.grid_dy = grid_offset
+        self._native_crop: np.ndarray | None = None
+        self._scale_x: float = 1.0
+        self._scale_y: float = 1.0
+
+    def set_native_crop(self, crop_frame: np.ndarray,
+                        scale_x: float, scale_y: float) -> None:
+        """Provide the native-resolution crop for this frame."""
+        self._native_crop = crop_frame
+        self._scale_x = scale_x
+        self._scale_y = scale_y
+
+    def clear_native_crop(self) -> None:
+        self._native_crop = None
+
+    def _af(self, canonical: np.ndarray) -> np.ndarray:
+        return self._native_crop if self._native_crop is not None else canonical
+
+    def _s(self, v: float, axis: str) -> int:
+        """Scale a NES pixel value along 'x' or 'y' axis."""
+        if self._native_crop is None:
+            return int(v)
+        return round(v * (self._scale_x if axis == 'x' else self._scale_y))
 
     def read_triforce(self, frame: np.ndarray) -> list[bool]:
         """Detect which triforce pieces are collected.
@@ -65,72 +87,58 @@ class TriforceReader:
         Returns:
             List of 8 booleans, one per dungeon (1-8).
         """
-        # Step 1: Find -LIFE- text position (scroll anchor)
+        src = self._af(frame)
         life_y = self._find_life_y(frame)
         if life_y is None:
             return [False] * 8
 
-        # Step 2: Define triforce scan region
-        y_start = max(0, life_y - TRIFORCE_Y_OFFSET_MAX)
-        y_end = max(0, life_y - TRIFORCE_Y_OFFSET_MIN)
-        if y_end <= y_start:
+        y_start = max(0, life_y - self._s(TRIFORCE_Y_OFFSET_MAX, 'y'))
+        y_end   = max(0, life_y - self._s(TRIFORCE_Y_OFFSET_MIN, 'y'))
+        x_start = self._s(TRIFORCE_X_START, 'x')
+        x_end   = self._s(TRIFORCE_X_END, 'x')
+
+        if y_end <= y_start or x_end <= x_start:
             return [False] * 8
 
-        # Step 3: Build gold pixel mask in the triforce region
-        region = frame[y_start:y_end, TRIFORCE_X_START:TRIFORCE_X_END]
+        region = src[y_start:y_end, x_start:x_end]
         if region.size == 0:
             return [False] * 8
 
         gold_mask = self._gold_mask(region)
         total_gold = int(np.sum(gold_mask))
-
         if total_gold < MIN_GOLD_PIXELS:
             return [False] * 8
 
-        # Step 4: Find gold pixel X positions (relative to TRIFORCE_X_START)
         gold_ys, gold_xs = np.where(gold_mask)
-        # Convert to absolute X coordinates
-        abs_xs = gold_xs + TRIFORCE_X_START
+        abs_xs = gold_xs + x_start   # absolute X in src frame
 
-        # Step 5: Count distinct gold clusters by X proximity
-        # Sort X positions and split into clusters with gaps > 8px
         sorted_xs = np.sort(abs_xs)
-        clusters = []
-        cluster_start = sorted_xs[0]
-        cluster_end = sorted_xs[0]
-        cluster_count = 1
+        gap_threshold = max(8, self._s(8, 'x'))
+        min_cluster_pixels = max(3, round(3 * max(self._scale_x, self._scale_y)))
 
+        clusters = []
+        cluster_start = int(sorted_xs[0])
+        cluster_end   = int(sorted_xs[0])
+        cluster_count = 1
         for x in sorted_xs[1:]:
-            if x - cluster_end <= 8:
-                cluster_end = x
+            if x - cluster_end < gap_threshold:
+                cluster_end = int(x)
                 cluster_count += 1
             else:
-                if cluster_count >= 3:  # minimum pixels for a real piece
+                if cluster_count >= min_cluster_pixels:
                     clusters.append((cluster_start + cluster_end) // 2)
-                cluster_start = x
-                cluster_end = x
+                cluster_start = int(x)
+                cluster_end   = int(x)
                 cluster_count = 1
-        if cluster_count >= 3:
+        if cluster_count >= min_cluster_pixels:
             clusters.append((cluster_start + cluster_end) // 2)
 
-        # Step 6: Build result — mark pieces as collected based on cluster count
-        # We know how many pieces are collected. For piece identification,
-        # use the total count (more reliable than X-position mapping which
-        # needs more calibration data).
-        result = [False] * 8
-        num_collected = len(clusters)
-
-        # Store the cluster centers for potential future mapping
         self._last_cluster_centers = clusters
-        self._last_num_collected = num_collected
+        self._last_num_collected = len(clusters)
 
-        # Simple approach: set first N pieces to True based on count.
-        # The game_logic validator's monotonic rule ensures pieces never
-        # disappear, so even approximate placement works for tracking.
-        # TODO: Use X-position mapping once we have all 8 piece positions calibrated.
-        for i in range(min(num_collected, 8)):
+        result = [False] * 8
+        for i in range(min(len(clusters), 8)):
             result[i] = True
-
         return result
 
     def _find_life_y(self, frame: np.ndarray) -> int | None:
@@ -139,17 +147,20 @@ class TriforceReader:
         Scans y=100..232 for red text at the standard LIFE column position.
         Returns the Y where strong red was first found, or None.
         """
-        x = 22 * 8 + self.grid_dx
-        if x + 8 > frame.shape[1]:
+        src = self._af(frame)
+        x  = self._s(22 * 8 + self.grid_dx, 'x')
+        tw = max(1, self._s(8, 'x'))
+        th = max(1, self._s(8, 'y'))
+        y_start = self._s(100, 'y')
+        y_end   = min(self._s(232, 'y'), src.shape[0] - th)
+        if x + tw > src.shape[1]:
             return None
-
-        for y in range(100, min(232, frame.shape[0] - 8)):
-            tile = frame[y:y + 8, x:x + 8]
+        for y in range(y_start, y_end):
+            tile = src[y:y + th, x:x + tw]
             avg = np.mean(tile, axis=(0, 1))
             r, g, b = float(avg[2]), float(avg[1]), float(avg[0])
             if r > 50 and r > g * 2 and r > b * 2:
                 return y
-
         return None
 
     @staticmethod
