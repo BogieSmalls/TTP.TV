@@ -4,6 +4,11 @@ import { scanCalibration } from './calibration.js';
 import { GpuContext } from './gpu.js';
 import { VisionPipeline } from './pipeline.js';
 
+const params = new URLSearchParams(location.search);
+const racerId = params.get('racerId');
+const streamUrl = params.get('streamUrl');
+const calib = JSON.parse(params.get('calib') || '{}');
+
 const gpu = new GpuContext();
 let gpuReady = false;
 let pipeline = null;
@@ -13,11 +18,6 @@ gpu.init().then(() => {
   gpuReady = true;
   console.log('GPU ready, pipeline initialized');
 }).catch(e => console.error('GPU init failed:', e));
-
-const params = new URLSearchParams(location.search);
-const racerId = params.get('racerId');
-const streamUrl = params.get('streamUrl');
-const calib = JSON.parse(params.get('calib') || '{}');
 
 // ── WebSocket ──────────────────────────────────────────────────────────────
 const ws = new WebSocket(`ws://${location.host}/vision-tab-ws?racerId=${racerId}`);

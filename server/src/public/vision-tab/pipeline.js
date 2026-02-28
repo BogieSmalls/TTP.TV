@@ -21,7 +21,7 @@ export class VisionPipeline {
     // Result storage buffer (3 atomics = 3 i32 = 12 bytes)
     this.resultBuffer = d.createBuffer({
       size: 3 * 4,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
     });
     // Staging buffer for CPU readback
     this.stagingBuffer = d.createBuffer({
