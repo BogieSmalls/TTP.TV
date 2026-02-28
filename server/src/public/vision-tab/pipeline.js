@@ -169,6 +169,55 @@ export class VisionPipeline {
     });
   }
 
+  /** Called by gpu.js after drop templates are fetched from /api/vision/drop-templates. */
+  _initFloorItemPipeline(dropTemplates) {
+    if (!dropTemplates || dropTemplates.length === 0) return;
+    const d = this.device;
+    const ITEM_COUNT = dropTemplates.length;
+    const W = 8, H = 16;
+
+    // Upload drop template pixels as a 2D texture array (one layer per template)
+    this.dropTemplatesTexture = d.createTexture({
+      size: [W, H, ITEM_COUNT],
+      format: 'r32float',
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+    });
+    for (let i = 0; i < ITEM_COUNT; i++) {
+      const pixels = dropTemplates[i].pixels; // Float32 luma values, length W*H (128)
+      const data = new Float32Array(pixels);
+      d.queue.writeTexture(
+        { texture: this.dropTemplatesTexture, origin: [0, 0, i] },
+        data,
+        { bytesPerRow: W * 4, rowsPerImage: H },
+        [W, H, 1],
+      );
+    }
+
+    // Floor item calibration uniform: 6 floats = 24 bytes (same layout as roomCalibBuffer)
+    this.floorItemCalibBuffer = d.createBuffer({
+      size: 6 * 4,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+
+    // Compile FLOOR_ITEM_SHADER and create compute pipeline
+    const floorItemModule = d.createShaderModule({ code: FLOOR_ITEM_SHADER });
+    this.floorItemPipeline = d.createComputePipeline({
+      layout: 'auto',
+      compute: { module: floorItemModule, entryPoint: 'floor_item_scan' },
+    });
+  }
+
+  /** Update floor item calibration uniform (called each frame if floor item pipeline is active). */
+  _updateFloorItemCalib(calib) {
+    if (!this.floorItemCalibBuffer) return;
+    const data = new Float32Array([
+      calib.scale_x, calib.scale_y,
+      calib.offset_x, calib.offset_y,
+      calib.video_w, calib.video_h,
+    ]);
+    this.device.queue.writeBuffer(this.floorItemCalibBuffer, 0, data);
+  }
+
   /** Update room calibration uniform (called each frame if room pipeline is active). */
   _updateRoomCalib(calib) {
     if (!this.roomCalibBuffer) return;
