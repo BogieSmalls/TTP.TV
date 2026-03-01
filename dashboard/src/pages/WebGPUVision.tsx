@@ -70,11 +70,16 @@ export default function WebGPUVision() {
   const socket = useSocket();
   const [racerIds, setRacerIds] = useState<string[]>([]);
   const [selectedRacer, setSelectedRacer] = useState<string | null>(null);
+  const [racerInput, setRacerInput] = useState('');
+  const [streamUrl, setStreamUrl] = useState('');
   const [stable, setStable] = useState<StableGameState | null>(null);
   const [pending, setPending] = useState<PendingFieldInfo[]>([]);
   const [fps, setFps] = useState(0);
   const [frameCount, setFrameCount] = useState(0);
   const [latency, setLatency] = useState(0);
+  const [startOffset, setStartOffset] = useState('');
+  const [startError, setStartError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
   const frameTimesRef = useRef<number[]>([]);
   const prevRacerRef = useRef<string | null>(null);
 
@@ -82,7 +87,13 @@ export default function WebGPUVision() {
   useEffect(() => {
     fetch('/api/vision/racers')
       .then(r => r.json())
-      .then((d: { racerIds: string[] }) => setRacerIds(d.racerIds))
+      .then((d: { racerIds: string[] }) => {
+        setRacerIds(d.racerIds);
+        if (d.racerIds.length === 1) {
+          setRacerInput(d.racerIds[0]);
+          setSelectedRacer(d.racerIds[0]);
+        }
+      })
       .catch(() => {});
   }, []);
 
@@ -115,55 +126,126 @@ export default function WebGPUVision() {
 
   useSocketEvent<WebGPUStateUpdate>('vision:webgpu:state', handleStateUpdate);
 
-  const isRunning = selectedRacer !== null && racerIds.includes(selectedRacer);
+  const racerId = racerInput.trim();
+  const isRunning = racerId !== '' && racerIds.includes(racerId);
+  const canStart = racerId !== '' && streamUrl.trim() !== '' && !isRunning && !starting;
+
+  /** Parse "H:MM:SS", "MM:SS", or plain seconds into seconds */
+  function parseOffset(s: string): number | null {
+    const trimmed = s.trim();
+    if (!trimmed) return null;
+    const parts = trimmed.split(':').map(Number);
+    if (parts.some(isNaN)) return null;
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return parts[0];
+  }
 
   async function handleStart() {
-    if (!selectedRacer) return;
-    await fetch(`/api/vision/${selectedRacer}/start`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ streamUrl: '' }),
-    });
-    setRacerIds(prev => prev.includes(selectedRacer) ? prev : [...prev, selectedRacer]);
+    if (!canStart) return;
+    setStartError(null);
+    setStarting(true);
+    try {
+      const body: Record<string, unknown> = { streamUrl: streamUrl.trim() };
+      const offset = parseOffset(startOffset);
+      if (offset !== null) body.startOffset = offset;
+      const res = await fetch(`/api/vision/${racerId}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
+      }
+      setSelectedRacer(racerId);
+      setRacerIds(prev => prev.includes(racerId) ? prev : [...prev, racerId]);
+    } catch (e: unknown) {
+      setStartError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setStarting(false);
+    }
   }
 
   async function handleStop() {
-    if (!selectedRacer) return;
-    await fetch(`/api/vision/${selectedRacer}`, { method: 'DELETE' });
-    setRacerIds(prev => prev.filter(id => id !== selectedRacer));
-    setStable(null);
-    setPending([]);
+    if (!racerId) return;
+    await fetch(`/api/vision/${racerId}`, { method: 'DELETE' });
+    setRacerIds(prev => prev.filter(id => id !== racerId));
+    if (selectedRacer === racerId) {
+      setSelectedRacer(null);
+      setStable(null);
+      setPending([]);
+    }
   }
 
   return (
     <div className="h-screen flex flex-col bg-[#0f0f1a] text-white p-2 gap-2">
 
       {/* Header */}
-      <div className="flex items-center gap-4 px-2 py-1 bg-[#1a1a2e] rounded">
-        <select
-          className="bg-[#0f0f1a] border border-gray-700 rounded px-2 py-1 text-sm"
-          value={selectedRacer ?? ''}
-          onChange={e => setSelectedRacer(e.target.value || null)}
-        >
-          <option value="">— select racer —</option>
-          {racerIds.map(id => <option key={id} value={id}>{id}</option>)}
-        </select>
-        <span className={`text-xs ${fps > 0 ? 'text-green-400' : 'text-gray-500'}`}>
-          ● {fps}fps
-        </span>
-        <span className="text-xs text-gray-400">⬡ {frameCount.toLocaleString()} frames</span>
-        <span className="text-xs text-gray-400">⚡ {latency}ms</span>
-        <div className="ml-auto flex gap-2">
-          <button
-            onClick={handleStart}
-            disabled={!selectedRacer || isRunning}
-            className="px-3 py-1 text-xs bg-green-700 hover:bg-green-600 disabled:opacity-40 rounded"
-          >Start</button>
-          <button
-            onClick={handleStop}
-            disabled={!isRunning}
-            className="px-3 py-1 text-xs bg-red-800 hover:bg-red-700 disabled:opacity-40 rounded"
-          >Stop</button>
+      <div className="flex flex-col gap-1 px-2 py-2 bg-[#1a1a2e] rounded">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Racer ID */}
+          <div className="flex items-center gap-1">
+            <label className="text-xs text-gray-400 shrink-0">Racer</label>
+            <input
+              list="racer-datalist"
+              value={racerInput}
+              onChange={e => {
+                setRacerInput(e.target.value);
+                if (racerIds.includes(e.target.value)) setSelectedRacer(e.target.value);
+              }}
+              placeholder="racer id"
+              className="bg-[#0f0f1a] border border-gray-700 rounded px-2 py-1 text-sm w-28"
+            />
+            <datalist id="racer-datalist">
+              {racerIds.map(id => <option key={id} value={id} />)}
+            </datalist>
+          </div>
+
+          {/* Stream / VOD URL */}
+          <div className="flex items-center gap-1 flex-1 min-w-0">
+            <label className="text-xs text-gray-400 shrink-0">URL</label>
+            <input
+              value={streamUrl}
+              onChange={e => setStreamUrl(e.target.value)}
+              placeholder="https://twitch.tv/channel  or  https://twitch.tv/videos/123456"
+              className="bg-[#0f0f1a] border border-gray-700 rounded px-2 py-1 text-sm w-full"
+            />
+          </div>
+
+          {/* Start offset */}
+          <div className="flex items-center gap-1">
+            <label className="text-xs text-gray-400 shrink-0">Start at</label>
+            <input
+              value={startOffset}
+              onChange={e => setStartOffset(e.target.value)}
+              placeholder="0:11:30"
+              className="bg-[#0f0f1a] border border-gray-700 rounded px-2 py-1 text-sm w-20"
+            />
+          </div>
+
+          {/* Start / Stop */}
+          <div className="flex gap-2 ml-auto">
+            <button
+              onClick={handleStart}
+              disabled={!canStart}
+              className="px-3 py-1 text-xs bg-green-700 hover:bg-green-600 disabled:opacity-40 rounded"
+            >{starting ? 'Starting…' : 'Start'}</button>
+            <button
+              onClick={handleStop}
+              disabled={!isRunning}
+              className="px-3 py-1 text-xs bg-red-800 hover:bg-red-700 disabled:opacity-40 rounded"
+            >Stop</button>
+          </div>
+        </div>
+
+        {/* Status row */}
+        <div className="flex items-center gap-4">
+          <span className={`text-xs ${fps > 0 ? 'text-green-400' : 'text-gray-500'}`}>● {fps}fps</span>
+          <span className="text-xs text-gray-400">⬡ {frameCount.toLocaleString()} frames</span>
+          <span className="text-xs text-gray-400">⚡ {latency}ms</span>
+          {isRunning && <span className="text-xs text-green-500">● live: {racerId}</span>}
+          {startError && <span className="text-xs text-red-400">✗ {startError}</span>}
         </div>
       </div>
 

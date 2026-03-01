@@ -46,21 +46,17 @@ router.get('/templates', async (_req, res) => {
 router.get('/room-templates', async (_req, res) => {
   try {
     const roomsDir = path.join(process.cwd(), 'content/overworld_rooms');
-    const rooms: Array<{ id: number; col: number; row: number; pixels: number[] }> = [];
+    const rooms: Array<{ id: number; col: number; row: number; data: string }> = [];
     for (let r = 1; r <= 8; r++) {
       for (let c = 1; c <= 16; c++) {
         const filePath = path.join(roomsDir, `C${c}_R${r}.jpg`);
         if (!fs.existsSync(filePath)) continue;
         const img = await loadImage(filePath);
-        const canvas = createCanvas(64, 44); // resize to 64×44 for correlation
+        const canvas = createCanvas(64, 44); // resize to 64×44
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, 64, 44);
-        const data = ctx.getImageData(0, 0, 64, 44);
-        const pixels: number[] = [];
-        for (let i = 0; i < data.data.length; i += 4) {
-          pixels.push((data.data[i] * 0.299 + data.data[i + 1] * 0.587 + data.data[i + 2] * 0.114) / 255);
-        }
-        rooms.push({ id: (r - 1) * 16 + (c - 1), col: c, row: r, pixels });
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        rooms.push({ id: (r - 1) * 16 + (c - 1), col: c, row: r, data: dataUrl });
       }
     }
     res.json(rooms);

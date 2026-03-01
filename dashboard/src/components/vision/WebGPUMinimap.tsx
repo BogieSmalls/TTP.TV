@@ -4,7 +4,7 @@ interface RoomTemplate {
   id: number;
   col: number;
   row: number;
-  pixels: number[];  // 64×44×3 floats 0-1
+  data: string; // base64 JPEG data URL
 }
 
 interface Props {
@@ -21,16 +21,19 @@ function decodePosition(mapPosition: number): { col: number; row: number } {
 }
 
 export function WebGPUMinimap({ mapPosition, screenType, dungeonLevel }: Props) {
-  const [templates, setTemplates] = useState<RoomTemplate[]>([]);
+  const [tileMap, setTileMap] = useState<Map<string, string>>(new Map());
   // visited rooms: Map<dungeonLevel, Set<mapPosition>>
   const visitedRef = useRef<Map<number, Set<number>>>(new Map());
-  const canvasRefs = useRef<Map<string, HTMLCanvasElement>>(new Map());
 
   // Fetch room templates once on mount
   useEffect(() => {
     fetch('/api/vision/room-templates')
       .then(r => r.json())
-      .then((data: RoomTemplate[]) => setTemplates(data))
+      .then((data: RoomTemplate[]) => {
+        const m = new Map<string, string>();
+        data.forEach(t => m.set(`${t.col}-${t.row}`, t.data));
+        setTileMap(m);
+      })
       .catch(() => {/* silently ignore — map still functional without tiles */});
   }, []);
 
@@ -41,24 +44,6 @@ export function WebGPUMinimap({ mapPosition, screenType, dungeonLevel }: Props) 
     if (!visitedRef.current.has(key)) visitedRef.current.set(key, new Set());
     visitedRef.current.get(key)!.add(mapPosition);
   }, [mapPosition, screenType, dungeonLevel]);
-
-  // Draw room tile onto canvas
-  useEffect(() => {
-    templates.forEach(t => {
-      const canvas = canvasRefs.current.get(`${t.col}-${t.row}`);
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      const imageData = ctx.createImageData(64, 44);
-      for (let i = 0; i < t.pixels.length / 3; i++) {
-        imageData.data[i * 4 + 0] = Math.round(t.pixels[i * 3 + 0] * 255);
-        imageData.data[i * 4 + 1] = Math.round(t.pixels[i * 3 + 1] * 255);
-        imageData.data[i * 4 + 2] = Math.round(t.pixels[i * 3 + 2] * 255);
-        imageData.data[i * 4 + 3] = 255;
-      }
-      ctx.putImageData(imageData, 0, 0);
-    });
-  }, [templates]);
 
   const isDungeon = screenType === 'dungeon';
   const currentPos = decodePosition(mapPosition);
@@ -104,19 +89,24 @@ export function WebGPUMinimap({ mapPosition, screenType, dungeonLevel }: Props) 
           const isCurrent = currentPos.col === col && currentPos.row === row;
           const pos = ((row - 1) << 4) | (col - 1);
           const isVisited = visited.has(pos);
+          const src = tileMap.get(`${col}-${row}`);
           return (
             <div
               key={i}
               className={`relative ${isCurrent ? 'ring-2 ring-yellow-400 ring-inset z-10' : ''}`}
             >
-              <canvas
-                ref={el => {
-                  if (el) canvasRefs.current.set(`${col}-${row}`, el);
-                }}
-                width={64}
-                height={44}
-                className={`w-full block ${!isVisited && !isCurrent ? 'opacity-40' : ''}`}
-              />
+              {src ? (
+                <img
+                  src={src}
+                  alt={`C${col}R${row}`}
+                  className={`w-full block ${!isVisited && !isCurrent ? 'opacity-40' : ''}`}
+                />
+              ) : (
+                <div
+                  className={`w-full bg-gray-800 ${!isVisited && !isCurrent ? 'opacity-40' : ''}`}
+                  style={{ paddingTop: '68.75%' /* 44/64 aspect ratio */ }}
+                />
+              )}
             </div>
           );
         })}

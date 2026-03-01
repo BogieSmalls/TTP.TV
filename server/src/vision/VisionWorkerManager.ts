@@ -1,6 +1,7 @@
 import { Browser, chromium, Page } from 'playwright';
 import { RacerConfig, RawPixelState } from './types.js';
 import type { StableGameState } from './types.js';
+import { resolveHlsUrl } from './hlsResolver.js';
 // WebSocket is the Node.js 22 built-in global — no import needed (consistent with RaceMonitor.ts)
 
 export class VisionWorkerManager {
@@ -38,9 +39,11 @@ export class VisionWorkerManager {
     page.on('console', msg => console.log(`[vision:${config.racerId}]`, msg.text()));
     page.on('pageerror', err => console.error(`[vision:${config.racerId}] ERROR`, err));
 
+    const hlsUrl = await resolveHlsUrl(config.streamUrl);
+
     const tabUrl = new URL('http://localhost:3000/vision-tab/');
     tabUrl.searchParams.set('racerId', config.racerId);
-    tabUrl.searchParams.set('streamUrl', config.streamUrl);
+    tabUrl.searchParams.set('streamUrl', hlsUrl);
     tabUrl.searchParams.set('calib', JSON.stringify(config.calibration));
 
     await page.goto(tabUrl.toString());

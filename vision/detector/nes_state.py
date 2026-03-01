@@ -227,20 +227,19 @@ class NesStateDetector:
                 state.gannon_nearby = self.ganon_detector.detect(
                     nf, state.screen_type, state.dungeon_level)
 
-            # Minimap position (via HudReader — works at native resolution)
-            is_dungeon = state.screen_type == 'dungeon'
-            state.map_position = self.hud_reader.read_minimap_position(nf, is_dungeon)
+            # Run HUD calibration
+            self.calibrator.calibrate(nf.to_canonical(), frame_num=getattr(self, '_frame_count', 0))
+            self._frame_count = getattr(self, '_frame_count', 0) + 1
 
-            # MinimapReader provides extra fields (dungeon map, triforce/zelda
-            # room dots) but works on canonical coordinates.
-            if self.calibrator.result.locked:
-                canonical = nf.to_canonical()
-                minimap_result = self.minimap.read(canonical, state.screen_type, state.dungeon_level)
-                state.dungeon_map_rooms = minimap_result.dungeon_map_rooms
-                state.triforce_room = minimap_result.triforce_room
-                state.zelda_room = minimap_result.zelda_room
-                state.tile_match_id = minimap_result.tile_match_id
-                state.tile_match_score = minimap_result.tile_match_score
+            # Minimap reading (replaces old minimap position)
+            is_dungeon = state.screen_type == 'dungeon'
+            minimap_result = self.minimap.read(nf.to_canonical(), state.screen_type, state.dungeon_level)
+            state.map_position = minimap_result.map_position
+            state.dungeon_map_rooms = minimap_result.dungeon_map_rooms
+            state.triforce_room = minimap_result.triforce_room
+            state.zelda_room = minimap_result.zelda_room
+            state.tile_match_id = minimap_result.tile_match_id
+            state.tile_match_score = minimap_result.tile_match_score
 
             # Item detection in game area (triforce pieces, etc.)
             items = self.item_detector.detect_items(nf, state.screen_type)

@@ -24,7 +24,7 @@
 
 | Anchor | Provides | NES reference |
 |---|---|---|
-| LIFE text y position | `anchor_y`, scale_y (glyph height / 8) | Row 5, y=40 |
+| LIFE text y position | `anchor_y`, scale_y (glyph height / 8) | Row 2, y=16 (Prev mistakenly Row 5, y=40, which are hearts!) |
 | LIFE-bottom → gameplay boundary | scale_y (independent) | Boundary at y=64 |
 | B-item left border x | `anchor_x`, scale_x (with A-item) | Col ~16 |
 | A-item left border x | scale_x (B→A gap) | Col ~20 |
@@ -46,8 +46,8 @@
 ```python
 @dataclass
 class CalibrationAnchors:
-    life_y: int | None = None          # LIFE text top in canonical pixels
-    life_h: int | None = None          # LIFE text height in canonical pixels
+    life_y: int | None = None          # LIFE text top in native crop stream pixels
+    life_h: int | None = None          # LIFE text height in native crop stream pixels
     gameplay_y: int | None = None      # HUD/gameplay boundary y
     b_item_x: int | None = None        # B-item left border x
     a_item_x: int | None = None        # A-item left border x
@@ -74,19 +74,19 @@ class CalibrationResult:
   1. Run all anchor detections (each returns value or None)
   2. Compute scale_y from all available measurements, take weighted average:
      - From LIFE glyph: `life_h / 8.0`
-     - From HUD/gameplay boundary: `(gameplay_y - life_y) / (64 - LIFE_NES_Y)`
+     - From HUD/gameplay boundary: `(gameplay_y - life_y) / (64 - 16)`
      - From digit rows: `(bomb_row_y - rupee_row_y) / (BOMB_NES_Y - RUPEE_NES_Y)`
   3. Compute scale_x from B/A gap: `(a_item_x - b_item_x) / (A_NES_X - B_NES_X)`
   4. confidence = fraction of anchors successfully detected (0.0–1.0)
   5. If `confidence > 0.85` and `not locked`: lock, log with frame number
   6. If locked: spot-check every 300 gameplay frames; log warning if drift > 3px
 
-- `nes_to_px(nes_x, nes_y) -> tuple[int, int]` — maps NES coordinates to canonical frame pixels using locked result (or best available if not yet locked)
+- `nes_to_px(nes_x, nes_y) -> tuple[int, int]` — maps NES coordinates to native crop stream pixels using locked result (or best available if not yet locked)
 
 ### Anchor detection methods (private)
 
 - `_detect_life_text(frame)` — scan x=176–230, y=0–60 for red pixel cluster (R>50, R>2G, R>2B); return bounding box top y and height
-- `_detect_gameplay_boundary(frame, life_y)` — scan downward from `life_y + 20` until non-black row found; return y
+- `_detect_gameplay_boundary(frame, life_y)` — scan downward from `life_y + 44` until non-black row found; return y
 - `_detect_b_a_borders(frame)` — find blue border left edges at known x range for B and A item slots
 - `_detect_level_text(frame)` — scan row 1 (y=8–15) for non-black pixel cluster; return left edge x
 - `_detect_digit_rows(frame)` — find rupee, key, bomb digit row centers using red/white pixel scan at known column ranges
@@ -101,7 +101,7 @@ class CalibrationResult:
 - Constructor gains `calibrator: HudCalibrator` parameter
 - `_extract(frame, nes_x, nes_y, w, h)` — when calibrator is locked, uses `calibrator.nes_to_px()` instead of `crop_w/256` scaling. Falls back to existing landmark or grid math when not locked.
 - `_tile(frame, col, row)` — unchanged interface; uses updated `_extract()`
-- `read_hearts()` — landmark path: derive heart row y from `calibrator.life_y + 8` (row 1) and `calibrator.life_y + 16` (row 2) instead of using Hearts landmark y directly. Fallback to existing landmark y when calibrator not locked.
+- `read_hearts()` — landmark path: derive heart row y from `calibrator.life_y + 16` (row 4) and `calibrator.life_y + 24` (row 5) instead of using Hearts landmark y directly. Fallback to existing landmark y when calibrator not locked.
 - `read_minimap_position()` — **removed**; replaced by `MinimapReader`
 - All other read methods unchanged in interface, gain accuracy via `_extract()` fix
 
