@@ -1,4 +1,8 @@
 import { Router } from 'express';
+import { spawn } from 'node:child_process';
+import { resolve } from 'node:path';
+import { mkdir } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import type { Config } from '../config.js';
 import type { CropProfileService } from '../vision/CropProfileService.js';
 import { logger } from '../logger.js';
@@ -54,11 +58,70 @@ export function createCropRoutes(ctx: CropRouteContext): Router {
   });
 
   // ─── Auto-crop from extraction screenshots ───
-  // Python vision pipeline disabled — WebGPU pipeline active
-  router.post('/auto-crop', (_req, res) => {
-    console.warn('Python vision pipeline disabled — WebGPU pipeline active');
-    logger.warn('[crop] /auto-crop: Python vision pipeline disabled — auto_crop.py will not be spawned.');
-    res.status(503).json({ error: 'Python vision pipeline disabled — WebGPU pipeline active' });
+  router.post('/auto-crop', async (req, res) => {
+    const { extractionId } = req.body;
+    if (!extractionId) {
+      res.status(400).json({ error: 'extractionId is required' });
+      return;
+    }
+
+    const projectRoot = resolve(import.meta.dirname, '../../..');
+    const screenshotDir = resolve(projectRoot, 'data/crop-screenshots', extractionId);
+    const visionDir = resolve(projectRoot, 'vision');
+    const pythonPath = resolve(projectRoot, ctx.config.vision.pythonPath);
+
+    try {
+      // Find screenshot files in the extraction directory
+      const { readdir } = await import('node:fs/promises');
+      const files = await readdir(screenshotDir);
+      const jpgs = files.filter(f => f.endsWith('.jpg') || f.endsWith('.png')).sort();
+
+      if (jpgs.length === 0) {
+        res.status(400).json({ error: 'No screenshots found in extraction' });
+        return;
+      }
+
+      // Pick middle 3-5 screenshots for auto-crop
+      const count = Math.min(5, jpgs.length);
+      const start = Math.max(0, Math.floor((jpgs.length - count) / 2));
+      const selected = jpgs.slice(start, start + count);
+      const inputs = selected.map(f => resolve(screenshotDir, f));
+
+      const args = [
+        resolve(visionDir, 'auto_crop.py'),
+        '--inputs', ...inputs,
+      ];
+
+      const result = await new Promise<string>((resolveP, reject) => {
+        const proc = spawn(pythonPath, args, {
+          cwd: visionDir,
+          windowsHide: true,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+
+        let stdout = '';
+        let stderr = '';
+        proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
+        proc.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+
+        proc.on('error', (err) => reject(err));
+        proc.on('exit', (code) => {
+          if (code !== 0) {
+            logger.error(`[crop] Auto-crop failed: ${stderr}`);
+            reject(new Error(stderr || `Process exited with code ${code}`));
+          } else {
+            resolveP(stdout);
+          }
+        });
+      });
+
+      const parsed = JSON.parse(result);
+      res.json(parsed);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error(`[crop] Auto-crop error: ${msg}`);
+      res.status(500).json({ error: msg });
+    }
   });
 
   // ─── Create crop profile ───
@@ -139,11 +202,71 @@ export function createCropRoutes(ctx: CropRouteContext): Router {
   });
 
   // ─── Extract screenshots from a video source ───
-  // Python vision pipeline disabled — WebGPU pipeline active
-  router.post('/screenshot', (_req, res) => {
-    console.warn('Python vision pipeline disabled — WebGPU pipeline active');
-    logger.warn('[crop] /screenshot: Python vision pipeline disabled — extract_screenshot.py will not be spawned.');
-    res.status(503).json({ error: 'Python vision pipeline disabled — WebGPU pipeline active' });
+  router.post('/screenshot', async (req, res) => {
+    const { source, timestamps } = req.body;
+    if (!source) {
+      res.status(400).json({ error: 'source is required' });
+      return;
+    }
+
+    const extractionId = randomUUID().slice(0, 12);
+    const projectRoot = resolve(import.meta.dirname, '../../..');
+    const outputDir = resolve(projectRoot, 'data/crop-screenshots', extractionId);
+    const visionDir = resolve(projectRoot, 'vision');
+    const pythonPath = resolve(projectRoot, ctx.config.vision.pythonPath);
+
+    try {
+      await mkdir(outputDir, { recursive: true });
+
+      const args = [
+        resolve(visionDir, 'extract_screenshot.py'),
+        '--source', source,
+        '--output-dir', outputDir,
+      ];
+      if (timestamps && Array.isArray(timestamps) && timestamps.length > 0) {
+        args.push('--timestamps', timestamps.join(','));
+      }
+      if (ctx.config.twitch.turboToken) {
+        args.push('--twitch-token', ctx.config.twitch.turboToken);
+      }
+
+      const result = await new Promise<string>((resolve, reject) => {
+        const proc = spawn(pythonPath, args, {
+          cwd: visionDir,
+          windowsHide: true,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+
+        let stdout = '';
+        let stderr = '';
+        proc.stdout.on('data', (d) => { stdout += d.toString(); });
+        proc.stderr.on('data', (d) => { stderr += d.toString(); });
+
+        proc.on('error', (err) => reject(err));
+        proc.on('exit', (code) => {
+          if (code !== 0) {
+            logger.error(`[crop] Screenshot extraction failed: ${stderr}`);
+            reject(new Error(stderr || `Process exited with code ${code}`));
+          } else {
+            resolve(stdout);
+          }
+        });
+      });
+
+      const manifest = JSON.parse(result);
+      // Prefix screenshot filenames with the URL path for serving
+      manifest.extractionId = extractionId;
+      manifest.screenshots = manifest.screenshots.map((s: any) => ({
+        ...s,
+        url: `/api/crop-profiles/screenshots/${extractionId}/${s.filename}`,
+      }));
+
+      res.json(manifest);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error(`[crop] Screenshot extraction error: ${msg}`);
+      res.status(500).json({ error: msg });
+    }
   });
 
   return router;

@@ -1,4 +1,7 @@
 import { EventEmitter } from 'node:events';
+import { spawn } from 'node:child_process';
+import { mkdir } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { v4 as uuid } from 'uuid';
 import type { Kysely } from 'kysely';
 import type { Server as SocketIOServer } from 'socket.io';
@@ -839,25 +842,109 @@ export class RaceOrchestrator extends EventEmitter {
 
   /**
    * Capture a single frame from a local RTMP stream via ffmpeg.
-   * Python vision pipeline disabled — WebGPU pipeline active. Always returns null.
+   * Returns the output file path, or null on failure.
    */
-  private async captureStreamFrame(_streamKey: string): Promise<string | null> {
-    console.warn('Python vision pipeline disabled — WebGPU pipeline active');
-    logger.warn('[auto-crop] captureStreamFrame: Python vision pipeline disabled — ffmpeg frame capture not available.');
-    return null;
+  private async captureStreamFrame(streamKey: string): Promise<string | null> {
+    const projectRoot = resolve(import.meta.dirname, '../../..');
+    const outputDir = resolve(projectRoot, 'data/crop-screenshots/auto');
+    await mkdir(outputDir, { recursive: true });
+
+    const outputPath = resolve(outputDir, `${streamKey}_${Date.now()}.jpg`);
+    const rtmpUrl = `rtmp://localhost:${this.config.rtmp.port}/live/${streamKey}`;
+
+    return new Promise<string | null>((res) => {
+      const proc = spawn(this.config.tools.ffmpegPath, [
+        '-hide_banner', '-loglevel', 'warning',
+        '-rtmp_live', 'live',
+        '-i', rtmpUrl,
+        '-vframes', '1',
+        '-q:v', '2',
+        outputPath,
+        '-y',
+      ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+
+      let stderr = '';
+      proc.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+
+      const timeout = setTimeout(() => {
+        proc.kill();
+        logger.warn(`[auto-crop] ffmpeg capture timed out for ${streamKey}`);
+        res(null);
+      }, 15000);
+
+      proc.on('error', (err) => {
+        clearTimeout(timeout);
+        logger.warn(`[auto-crop] ffmpeg spawn error for ${streamKey}`, { error: err.message });
+        res(null);
+      });
+
+      proc.on('exit', (code) => {
+        clearTimeout(timeout);
+        if (code === 0) {
+          res(outputPath);
+        } else {
+          logger.warn(`[auto-crop] ffmpeg capture failed for ${streamKey}: ${stderr.slice(0, 200)}`);
+          res(null);
+        }
+      });
+    });
   }
 
   /**
    * Run auto_crop.py on a screenshot and return detected crop coordinates.
-   * Python vision pipeline disabled — WebGPU pipeline active. Always returns null.
    */
-  private async runAutoCropDetection(_imagePath: string): Promise<{
+  private async runAutoCropDetection(imagePath: string): Promise<{
     crop_x: number; crop_y: number; crop_w: number; crop_h: number;
     stream_width: number; stream_height: number; confidence: number;
   } | null> {
-    console.warn('Python vision pipeline disabled — WebGPU pipeline active');
-    logger.warn('[auto-crop] runAutoCropDetection: Python vision pipeline disabled — auto_crop.py will not be spawned.');
-    return null;
+    const projectRoot = resolve(import.meta.dirname, '../../..');
+    const visionDir = resolve(projectRoot, 'vision');
+    const pythonPath = resolve(projectRoot, this.config.vision.pythonPath);
+
+    return new Promise((res) => {
+      const proc = spawn(pythonPath, [
+        resolve(visionDir, 'auto_crop.py'),
+        '--inputs', imagePath,
+      ], { cwd: visionDir, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+
+      let stdout = '';
+      let stderr = '';
+      proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
+      proc.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+
+      const timeout = setTimeout(() => {
+        proc.kill();
+        logger.warn('[auto-crop] auto_crop.py timed out');
+        res(null);
+      }, 30000);
+
+      proc.on('error', (err) => {
+        clearTimeout(timeout);
+        logger.warn('[auto-crop] auto_crop.py spawn error', { error: err.message });
+        res(null);
+      });
+
+      proc.on('exit', (code) => {
+        clearTimeout(timeout);
+        if (code !== 0) {
+          logger.warn(`[auto-crop] auto_crop.py failed: ${stderr.slice(0, 200)}`);
+          res(null);
+          return;
+        }
+        try {
+          const parsed = JSON.parse(stdout);
+          if (parsed.error || parsed.confidence === 0) {
+            logger.warn(`[auto-crop] Detection returned no useful result`);
+            res(null);
+            return;
+          }
+          res(parsed);
+        } catch {
+          logger.warn('[auto-crop] Failed to parse auto_crop.py output');
+          res(null);
+        }
+      });
+    });
   }
 
   /**
