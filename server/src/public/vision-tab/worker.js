@@ -165,6 +165,51 @@ function sampleHearts() {
   return tiles;
 }
 
+// Off-screen canvas for minimap dot sampling (64×32 = overworld minimap region)
+const minimapCanvas = document.createElement('canvas');
+minimapCanvas.width = 64;
+minimapCanvas.height = 32;
+const minimapCtx = minimapCanvas.getContext('2d', { willReadFrequently: true });
+
+/**
+ * Sample minimap cells for Link's dot detection.
+ * Overworld minimap: 16×8 grid, each cell 4×4 NES pixels.
+ * Link's dot (any tunic color) has high saturation against uniform gray background.
+ * Returns 128 saturation values (max(R,G,B) - min(R,G,B) per cell).
+ */
+function sampleMinimap() {
+  if (!calibration || !landmarks) return null;
+  const lm = landmarks.find(l => l.label === 'Minimap');
+  if (!lm) return null;
+  const gdx = calibration.gridDx ?? 0;
+  const gdy = calibration.gridDy ?? 0;
+  const sx = calibration.cropX + (lm.x + gdx) * calibration.scaleX;
+  const sy = calibration.cropY + (lm.y + gdy) * calibration.scaleY;
+  const sw = lm.w * calibration.scaleX;
+  const sh = lm.h * calibration.scaleY;
+  minimapCanvas.width = 64;
+  minimapCanvas.height = 32;
+  minimapCtx.drawImage(video, sx, sy, sw, sh, 0, 0, 64, 32);
+  const imgData = minimapCtx.getImageData(0, 0, 64, 32);
+  const d = imgData.data;
+  const cells = [];
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 16; col++) {
+      let satSum = 0;
+      for (let py = 0; py < 4; py++) {
+        for (let px = 0; px < 4; px++) {
+          const idx = ((row * 4 + py) * 64 + (col * 4 + px)) * 4;
+          const maxCh = Math.max(d[idx], d[idx + 1], d[idx + 2]);
+          const minCh = Math.min(d[idx], d[idx + 1], d[idx + 2]);
+          satSum += (maxCh - minCh);
+        }
+      }
+      cells.push(satSum / 16); // average saturation per cell (16 pixels)
+    }
+  }
+  return cells;
+}
+
 async function onVideoFrame(now, metadata) {
   lastFrameTime = Date.now();
   frameCount++;
@@ -181,6 +226,7 @@ async function onVideoFrame(now, metadata) {
     const tileColors = currentTileDefs.map(sampleTileColor);
     const heartTiles = sampleHearts();
     lastHeartTiles = heartTiles;
+    const minimapCells = sampleMinimap();
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({
         type: 'rawState',
@@ -189,6 +235,7 @@ async function onVideoFrame(now, metadata) {
         timestamp: Date.now(),
         tileColors,
         heartTiles,
+        minimapCells,
         ...aggregates,  // includes hudScores, roomScores, floorItems from pipeline
       }));
     }

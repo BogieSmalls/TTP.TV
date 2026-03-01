@@ -54,7 +54,7 @@ export class StateStabilizer {
     bItem:         new StreakTracker<string | null>(6, null),
     swordLevel:    new StreakTracker<number>(6, 0),
     hasMasterKey:  new StreakTracker<boolean>(6, false),
-    mapPosition:   new StreakTracker<number>(3, 0),
+    mapPosition:   new StreakTracker<number>(3, -1),
     triforce:      new StreakTracker<number>(3, 0),
   };
 

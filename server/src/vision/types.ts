@@ -18,6 +18,8 @@ export interface RawPixelState {
   // colorRatio = fraction of colored (non-black, non-white) pixels — heart fill
   // whiteRatio = fraction of white/near-white pixels — heart outline
   heartTiles?: Array<{ colorRatio: number; whiteRatio: number; brightness: number }>;
+  // Minimap cell saturations (128 cells: 16 cols × 8 rows for overworld)
+  minimapCells?: number[];
 }
 
 export interface CalibrationUniform {

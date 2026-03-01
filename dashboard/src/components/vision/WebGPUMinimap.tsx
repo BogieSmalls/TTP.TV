@@ -39,7 +39,7 @@ export function WebGPUMinimap({ mapPosition, screenType, dungeonLevel }: Props) 
 
   // Track visited rooms
   useEffect(() => {
-    if (mapPosition === 0) return;
+    if (mapPosition < 0) return;
     const key = screenType === 'dungeon' ? dungeonLevel : 0;
     if (!visitedRef.current.has(key)) visitedRef.current.set(key, new Set());
     visitedRef.current.get(key)!.add(mapPosition);

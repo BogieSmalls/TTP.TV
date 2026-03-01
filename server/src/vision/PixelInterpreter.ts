@@ -5,6 +5,7 @@ const DIGITS = ['0','1','2','3','4','5','6','7','8','9'];
 const MASTER_KEY_SCORE_THRESHOLD = 0.65;
 const DARK_TILE_THRESHOLD = 0.3;
 const ROOM_MATCH_THRESHOLD = 0.3; // minimum NCC score to accept a room match
+const MINIMAP_DOT_SAT_THRESHOLD = 20; // min avg saturation to detect Link's dot
 const ITEM_MIN_SCORE = 0.4;       // minimum NCC score to accept an item match
 
 // Per-counter min digit confidence (matches Python hud_reader thresholds).
@@ -154,7 +155,38 @@ export class PixelInterpreter {
   }
 
   private _bestRoom(raw: RawPixelState): number {
-    if (!raw.roomScores || raw.roomScores.length === 0) return 0;
+    if (!raw.roomScores || raw.roomScores.length === 0) return -1;
+
+    const dot = this._findMinimapDot(raw);
+
+    // Diagnostic: log minimap + room scores every 60 frames
+    if (this._diagCounter % 60 === 1) {
+      let bestIdx = 0, bestScore = -Infinity;
+      for (let i = 0; i < raw.roomScores.length; i++) {
+        if (raw.roomScores[i] > bestScore) { bestScore = raw.roomScores[i]; bestIdx = i; }
+      }
+      const nccCol = (bestIdx % 16) + 1, nccRow = Math.floor(bestIdx / 16) + 1;
+      console.log(`[room-diag] ncc=C${nccCol}R${nccRow}@${bestScore.toFixed(3)} dot=${dot ? `C${dot.col}R${dot.row}` : 'none'}`);
+    }
+
+    if (dot) {
+      // Triangulate: find best NCC match within ±1 of minimap dot
+      let bestIdx = -1;
+      let bestScore = -Infinity;
+      for (let i = 0; i < raw.roomScores.length; i++) {
+        const col = (i % 16) + 1;
+        const row = Math.floor(i / 16) + 1;
+        if (Math.abs(col - dot.col) <= 1 && Math.abs(row - dot.row) <= 1) {
+          if (raw.roomScores[i] > bestScore) {
+            bestScore = raw.roomScores[i];
+            bestIdx = i;
+          }
+        }
+      }
+      return bestScore >= ROOM_MATCH_THRESHOLD ? bestIdx : -1;
+    }
+
+    // Fallback: no minimap signal → pure NCC (existing behavior)
     let bestIdx = 0;
     let bestScore = -Infinity;
     for (let i = 0; i < raw.roomScores.length; i++) {
@@ -163,10 +195,7 @@ export class PixelInterpreter {
         bestIdx = i;
       }
     }
-    // Room IDs: index = (row-1)*16 + (col-1), encoded as (row-1)<<4 | (col-1)
-    // The server stores rooms sequentially: r=1-8, c=1-16 → id = (r-1)*16 + (c-1)
-    // mapPosition encoding: ((row-1) << 4) | (col-1) — same as the id
-    return bestScore >= ROOM_MATCH_THRESHOLD ? bestIdx : 0;
+    return bestScore >= ROOM_MATCH_THRESHOLD ? bestIdx : -1;
   }
 
   private _bestTemplate(raw: RawPixelState, tileId: string, group: string): { name: string; score: number } | null {
@@ -281,5 +310,20 @@ export class PixelInterpreter {
 
     // Combine both rows (row2 holds hearts 9-16)
     return { current: row1.current + row2.current, max: row1.max + row2.max };
+  }
+
+  /** Find Link's dot on the minimap via saturation (any tunic color vs gray background). */
+  private _findMinimapDot(raw: RawPixelState): { col: number; row: number } | null {
+    if (!raw.minimapCells || raw.minimapCells.length < 128) return null;
+    let bestIdx = 0;
+    let bestSat = -1;
+    for (let i = 0; i < 128; i++) {
+      if (raw.minimapCells[i] > bestSat) {
+        bestSat = raw.minimapCells[i];
+        bestIdx = i;
+      }
+    }
+    if (bestSat < MINIMAP_DOT_SAT_THRESHOLD) return null;
+    return { col: (bestIdx % 16) + 1, row: Math.floor(bestIdx / 16) + 1 };
   }
 }
