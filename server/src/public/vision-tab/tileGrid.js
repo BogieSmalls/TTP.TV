@@ -20,7 +20,7 @@
 // Row offsets relative to LIFE row (row offset 0)
 export const HUD_LAYOUT = {
   // Row -1: LEVEL-X text
-  LEVEL_TEXT:    { cols: [3, 10], rowOffset: -1, desc: '"LEVEL-X " dungeon indicator' },
+  LEVEL_TEXT:    { cols: [3, 10], rowOffset: -1, desc: '8 tiles, e.g. "LEVEL-X " / "PALACE6 " — digit at col 9, col 10 always space' },
 
   // Row 0: Rupees, B/A labels, LIFE text, minimap top
   RUPEES:        { cols: [12, 15], rowOffset: 0, desc: '[icon, x/100s, 10s/1s, 1s/blank]' },
@@ -102,8 +102,8 @@ export function computeTilePositions(lifeNesY = DEFAULT_LIFE_NES_Y) {
     bomb_0:  { nesX: colToNesX(14), nesY: y(3), size: '8x8' },
     bomb_1:  { nesX: colToNesX(15), nesY: y(3), size: '8x8' },
 
-    // Dungeon level: last digit of "LEVEL-X " (col 10) — 1 row above LIFE
-    dungeon_lvl: { nesX: colToNesX(10), nesY: y(-1), size: '8x8' },
+    // Dungeon level: digit "X" in "LEVEL-X" (col 9) — 1 row above LIFE
+    dungeon_lvl: { nesX: colToNesX(9), nesY: y(-1), size: '8x8' },
 
     // B-item icon (col 17, 1 row below LIFE, 8x16 sprite)
     b_item:  { nesX: colToNesX(17), nesY: y(1), size: '8x16' },
