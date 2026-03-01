@@ -5,7 +5,7 @@
 import { DEFAULT_LIFE_NES_X, DEFAULT_LIFE_NES_Y } from './tileGrid.js';
 
 const LIFE_NES_Y = DEFAULT_LIFE_NES_Y;  // 16 — LIFE is on same row as rupees
-const LIFE_NES_X = DEFAULT_LIFE_NES_X;  // 184 — col 24 (1-indexed), left edge of "-LIFE-"
+const LIFE_NES_X = DEFAULT_LIFE_NES_X;  // col 24 (1-indexed), left edge of "-LIFE-"
 const NES_WIDTH = 256;
 const MIN_RED_PIXELS = 10;
 const MAX_SCALE_XY_RATIO = 1.5;  // reject if scaleX/scaleY ratio exceeds this

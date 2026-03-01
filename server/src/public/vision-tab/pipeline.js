@@ -233,7 +233,7 @@ export class VisionPipeline {
 
   _updateCalib() {
     const c = this.calib;
-    // life_nes_x/y default to standard NES LIFE position (col 22, row 5) minus grid offset,
+    // life_nes_x/y default to standard NES LIFE position (col 24, row 4) minus grid offset,
     // so that nes_to_uv(life_nes_x, life_nes_y) + gridDx/gridDy hits the correct spot.
     const lifeX = c.lifeNesX ?? (DEFAULT_LIFE_NES_X - (c.gridDx || 0));
     const lifeY = c.lifeNesY ?? (DEFAULT_LIFE_NES_Y - (c.gridDy || 0));

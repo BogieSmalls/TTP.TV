@@ -62,14 +62,14 @@ describe('NCC shader math', () => {
       { id: 'rupee_0', nesX: 96, nesY: 16, size: '8x8' },
       { id: 'key_0', nesX: 104, nesY: 32, size: '8x8' },
       { id: 'bomb_0', nesX: 104, nesY: 40, size: '8x8' },
-      { id: 'dungeon_lvl', nesX: 64, nesY: 8, size: '8x8' },
+      { id: 'dungeon_lvl', nesX: 72, nesY: 8, size: '8x8' },
       { id: 'b_item', nesX: 128, nesY: 24, size: '8x16' },
-      { id: 'sword', nesX: 164, nesY: 24, size: '8x16' },
+      { id: 'sword', nesX: 152, nesY: 24, size: '8x16' },
     ];
-    expect(tiles[0].nesX).toBe(12 * 8);
-    expect(tiles[3].nesX).toBe(8 * 8);
-    expect(tiles[4].nesX).toBe(16 * 8);
-    expect(tiles[5].nesX).toBe(20 * 8 + 4);
+    expect(tiles[0].nesX).toBe(12 * 8);     // col 13 -> (13-1)*8 = 96
+    expect(tiles[3].nesX).toBe(9 * 8);      // col 10 -> (10-1)*8 = 72
+    expect(tiles[4].nesX).toBe(16 * 8);     // col 17 -> (17-1)*8 = 128
+    expect(tiles[5].nesX).toBe(19 * 8);     // col 20 -> (20-1)*8 = 152
   });
 
   it('DataView correctly writes mixed f32/u32 TileDef', () => {

@@ -24,7 +24,7 @@ export const HUD_LAYOUT = {
 
   // Row 0: Rupees, B/A labels, LIFE text, minimap top
   RUPEES:        { cols: [12, 15], rowOffset: 0, desc: '[icon, x/100s, 10s/1s, 1s/blank]' },
-  LIFE_TEXT:     { cols: [22, 27], rowOffset: 0, desc: '"-LIFE-" or "-ROAR-" red text' },
+  LIFE_TEXT:     { cols: [24, 29], rowOffset: 0, desc: '"-LIFE-" or "-ROAR-" red text' },
 
   // Rows 0-3: Minimap, B-item box, A-item box
   MINIMAP:       { cols: [3, 10], rowOffsets: [0, 3], desc: '8x4 tiles (64x32 px)' },
@@ -73,7 +73,7 @@ export function rowOffsetToNesY(lifeNesY, rowOffset) {
 }
 
 /** Default LIFE NES position in tile-def coordinate system. */
-export const DEFAULT_LIFE_NES_X = 176;  // 0-indexed col 22 = left edge of "-LIFE-"
+export const DEFAULT_LIFE_NES_X = 184;  // 1-indexed col 24 = left edge of "-LIFE-"
 export const DEFAULT_LIFE_NES_Y = 16;   // same row as rupees (nesY=16 in tile-def coords)
 
 /**
