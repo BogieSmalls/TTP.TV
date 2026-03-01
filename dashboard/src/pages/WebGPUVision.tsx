@@ -35,6 +35,7 @@ interface WebGPUStateUpdate {
   pending: PendingFieldInfo[];
   timestamp: number;
   frameCount: number;
+  diag?: { brightness: number; redAtLife: number; goldPixels: number };
 }
 
 // Friendly display names for pending fields
@@ -46,11 +47,8 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 function HeartDisplay({ current, max }: { current: number; max: number }) {
-  return (
-    <span>
-      {'❤'.repeat(current)}{'🖤'.repeat(Math.max(0, max - current))} /{max}
-    </span>
-  );
+  if (max === 0) return <span>—</span>;
+  return <span>{current}/{max}</span>;
 }
 
 function TriforceDisplay({ value }: { value: number }) {
@@ -74,6 +72,7 @@ export default function WebGPUVision() {
   const [streamUrl, setStreamUrl] = useState('');
   const [stable, setStable] = useState<StableGameState | null>(null);
   const [pending, setPending] = useState<PendingFieldInfo[]>([]);
+  const [diag, setDiag] = useState<{ brightness: number; redAtLife: number; goldPixels: number } | null>(null);
   const [fps, setFps] = useState(0);
   const [frameCount, setFrameCount] = useState(0);
   const [latency, setLatency] = useState(0);
@@ -116,6 +115,7 @@ export default function WebGPUVision() {
     if (update.racerId !== selectedRacer) return;
     setStable(update.stable);
     setPending(update.pending);
+    if (update.diag) setDiag(update.diag);
     const now = Date.now();
     setLatency(now - update.timestamp);
     setFrameCount(update.frameCount);
@@ -240,19 +240,24 @@ export default function WebGPUVision() {
         </div>
 
         {/* Status row */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
           <span className={`text-xs ${fps > 0 ? 'text-green-400' : 'text-gray-500'}`}>● {fps}fps</span>
           <span className="text-xs text-gray-400">⬡ {frameCount.toLocaleString()} frames</span>
           <span className="text-xs text-gray-400">⚡ {latency}ms</span>
           {isRunning && <span className="text-xs text-green-500">● live: {racerId}</span>}
           {startError && <span className="text-xs text-red-400">✗ {startError}</span>}
+          {diag && (
+            <span className="text-xs text-gray-500 ml-auto font-mono">
+              bri={diag.brightness.toFixed(1)} red={diag.redAtLife.toFixed(1)} gold={diag.goldPixels}
+            </span>
+          )}
         </div>
       </div>
 
       {/* Top state row */}
       <div className="grid grid-cols-2 gap-2">
         {/* Left: primary state */}
-        <div className="bg-[#1a1a2e] rounded p-3 text-sm space-y-1">
+        <div className="bg-[#1a1a2e] rounded p-3 text-sm">
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
             <span className="text-gray-400">screen</span>
             <span>{stable?.screenType ?? '—'}</span>
@@ -267,8 +272,8 @@ export default function WebGPUVision() {
           </div>
         </div>
 
-        {/* Right: secondary state */}
-        <div className="bg-[#1a1a2e] rounded p-3 text-sm space-y-1">
+        {/* Right: secondary state + pending (fixed height) */}
+        <div className="bg-[#1a1a2e] rounded p-3 text-sm flex flex-col">
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
             <span className="text-gray-400">sword</span>
             <span>{stable ? swordLabel(stable.swordLevel) : '—'}</span>
@@ -279,19 +284,23 @@ export default function WebGPUVision() {
             <span className="text-gray-400">triforce</span>
             <span>{stable ? <TriforceDisplay value={stable.triforceCollected} /> : '—'}</span>
           </div>
-          {/* Pending fields */}
-          {pending.length > 0 && (
-            <div className="mt-2 pt-2 border-t border-gray-700">
-              <div className="text-xs text-yellow-500 font-semibold mb-1">PENDING</div>
-              {pending.map(p => (
-                <div key={p.field} className="text-xs text-yellow-300">
-                  {FIELD_LABELS[p.field] ?? p.field}:{' '}
-                  {String(p.stableValue)}→{String(p.pendingValue)}{' '}
-                  <span className="text-gray-500">({p.count}/{p.threshold})</span>
-                </div>
-              ))}
-            </div>
-          )}
+          {/* Pending fields — fixed height to prevent layout jitter (up to ~7 fields) */}
+          <div className="mt-2 pt-2 border-t border-gray-700 min-h-[6.5rem]">
+            {pending.length > 0 ? (
+              <>
+                <div className="text-xs text-yellow-500 font-semibold mb-1">PENDING</div>
+                {pending.map(p => (
+                  <div key={p.field} className="text-xs text-yellow-300">
+                    {FIELD_LABELS[p.field] ?? p.field}:{' '}
+                    {String(p.stableValue)}→{String(p.pendingValue)}{' '}
+                    <span className="text-gray-500">({p.count}/{p.threshold})</span>
+                  </div>
+                ))}
+              </>
+            ) : (
+              <div className="text-xs text-gray-600">no pending changes</div>
+            )}
+          </div>
         </div>
       </div>
 

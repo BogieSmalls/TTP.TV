@@ -12,6 +12,12 @@ export interface RawPixelState {
   gameBrightness: number;
   redRatioAtLife: number;
   goldPixelCount: number;
+  // Per-tile average RGB for color disambiguation (indexed by tile def order)
+  tileColors?: Array<{ r: number; g: number; b: number }>;
+  // Heart tile color composition (16 tiles: 8 per row × 2 rows)
+  // colorRatio = fraction of colored (non-black, non-white) pixels — heart fill
+  // whiteRatio = fraction of white/near-white pixels — heart outline
+  heartTiles?: Array<{ colorRatio: number; whiteRatio: number; brightness: number }>;
 }
 
 export interface CalibrationUniform {
@@ -88,13 +94,25 @@ export interface WebGPUStateUpdate {
   pending: PendingFieldInfo[];
   timestamp: number;    // server-side ms epoch when frame was processed
   frameCount: number;   // cumulative frame count from the tab
+  // Raw aggregate values for diagnostics
+  diag?: { brightness: number; redAtLife: number; goldPixels: number };
 }
 
 export type RacerRole = 'monitored' | 'featured';
+
+export interface LandmarkPosition {
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 export interface RacerConfig {
   racerId: string;
   streamUrl: string;        // HLS .m3u8 URL
   calibration: CalibrationUniform;
   role: RacerRole;
+  startOffset?: number;     // seconds — seek to this time after video loads (VOD use)
+  landmarks?: LandmarkPosition[];
 }
