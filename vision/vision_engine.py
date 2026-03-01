@@ -26,6 +26,7 @@ import numpy as np
 import requests
 
 from detector.nes_state import NesStateDetector, GameState
+from detector.nes_frame import NESFrame, extract_nes_crop
 from detector.auto_crop import find_grid_alignment, calibrate_from_life_text
 from detector.game_logic import GameLogicValidator
 
@@ -122,7 +123,7 @@ def main():
               file=sys.stderr)
 
     # Create initial detector (may be re-created after calibration)
-    detector = NesStateDetector(args.templates, grid_offset=(grid_dx, grid_dy),
+    detector = NesStateDetector(args.templates,
                                 life_row=life_row, landmarks=landmarks)
 
     # Game logic validator — tracks state continuously across calibration changes
@@ -132,7 +133,7 @@ def main():
           f'({len(detector.digit_reader.templates)} digits)', file=sys.stderr)
 
     diag_done = False
-    def run_diagnostics(frame):
+    def run_diagnostics(nf: NESFrame):
         nonlocal diag_done
         if diag_done:
             return
@@ -142,8 +143,7 @@ def main():
         import os as _os
         diag = {}
 
-        hud = detector.hud_reader
-        dx, dy = hud.grid_dx, hud.grid_dy
+        dx, dy = nf.grid_dx, nf.grid_dy
         diag['grid_offset'] = {'dx': dx, 'dy': dy}
         diag['life_row'] = life_row
         diag['templates_loaded'] = len(detector.digit_reader.templates)
@@ -151,8 +151,10 @@ def main():
             diag['sub_crop'] = {'x': sub_crop[0], 'y': sub_crop[1],
                                 'w': sub_crop[2], 'h': sub_crop[3]}
 
+        hud = detector.hud_reader
+
         # LIFE text tile
-        life_tile = hud._tile(frame, hud.LIFE_TEXT_START_COL, hud.LIFE_TEXT_ROW)
+        life_tile = nf.tile(hud.LIFE_TEXT_START_COL, hud.LIFE_TEXT_ROW)
         life_avg = np.mean(life_tile, axis=(0, 1))
         diag['life_tile'] = {'bgr': [round(float(life_avg[i])) for i in range(3)],
                              'pos': [hud.LIFE_TEXT_START_COL * 8 + dx, hud.LIFE_TEXT_ROW * 8 + dy]}
@@ -160,7 +162,7 @@ def main():
         # Rupee digit tiles
         diag['rupee_digits'] = []
         for col in hud.RUPEE_DIGIT_COLS:
-            tile = hud._tile(frame, col, hud.RUPEE_DIGIT_ROW)
+            tile = nf.tile(col, hud.RUPEE_DIGIT_ROW)
             tile_gray = cv2.cvtColor(tile, cv2.COLOR_BGR2GRAY)
             brightness = float(np.mean(tile))
             best_score, best_digit = 0.0, -1
@@ -181,7 +183,7 @@ def main():
             })
 
         # Key digit
-        tile = hud._tile(frame, hud.KEY_DIGIT_COLS[0], hud.KEY_DIGIT_ROW)
+        tile = nf.tile(hud.KEY_DIGIT_COLS[0], hud.KEY_DIGIT_ROW)
         tile_gray = cv2.cvtColor(tile, cv2.COLOR_BGR2GRAY)
         brightness = float(np.mean(tile))
         best_score, best_digit = 0.0, -1
@@ -202,7 +204,7 @@ def main():
         }
 
         # Bomb digit
-        tile = hud._tile(frame, hud.BOMB_DIGIT_COLS[0], hud.BOMB_DIGIT_ROW)
+        tile = nf.tile(hud.BOMB_DIGIT_COLS[0], hud.BOMB_DIGIT_ROW)
         tile_gray = cv2.cvtColor(tile, cv2.COLOR_BGR2GRAY)
         brightness = float(np.mean(tile))
         best_score, best_digit = 0.0, -1
@@ -223,7 +225,7 @@ def main():
         }
 
         # Level digit
-        lvl_tile = hud._tile(frame, hud.LEVEL_DIGIT_COL, hud.LEVEL_DIGIT_ROW)
+        lvl_tile = nf.tile(hud.LEVEL_DIGIT_COL, hud.LEVEL_DIGIT_ROW)
         lvl_gray = cv2.cvtColor(lvl_tile, cv2.COLOR_BGR2GRAY)
         lvl_brightness = float(np.mean(lvl_tile))
         best_score, best_digit = 0.0, -1
@@ -247,7 +249,7 @@ def main():
         frame_path = _os.path.join(diag_dir, f'vision-frame-{args.racer[:8]}.png')
         with open(diag_path, 'w') as f:
             _json.dump(diag, f, indent=2)
-        cv2.imwrite(frame_path, frame)
+        cv2.imwrite(frame_path, nf.to_canonical())
         print(f'[Vision][Diag] Wrote diagnostics to {diag_path}', file=sys.stderr)
         print(f'[Vision][Diag] Wrote frame to {frame_path}', file=sys.stderr)
 
@@ -264,12 +266,12 @@ def main():
             except requests.RequestException as e:
                 print(f'[Vision][Diag] Failed to update crop profile: {e}', file=sys.stderr)
 
-    def process_frame(nes_canonical):
-        """Process a single canonical frame and push state updates."""
+    def process_frame(nf: NESFrame):
+        """Process a single NESFrame and push state updates."""
         nonlocal frame_count
-        state = detector.detect(nes_canonical)
+        state = detector.detect(nf)
         if state.screen_type in ('overworld', 'dungeon', 'cave'):
-            run_diagnostics(nes_canonical)
+            run_diagnostics(nf)
         frame_count += 1
 
         # Apply game logic validation (carry-forward, streak, events)
@@ -324,32 +326,22 @@ def main():
             (args.height, args.width, 3)
         )
 
-        # Crop to NES game area (initial crop from profile)
-        # Handle negative crop_y/crop_x: when the full-frame crop extends
-        # above/left of the stream frame (common when gameplayToFullCrop infers
-        # the HUD area above a gameplay-only crop), pad with black pixels.
-        fh, fw = frame.shape[:2]
-        y1, y2 = crop_y, crop_y + crop_h
-        x1, x2 = crop_x, crop_x + crop_w
-        # Clamp source coordinates to frame boundaries
-        sy1, sy2 = max(0, y1), min(fh, y2)
-        sx1, sx2 = max(0, x1), min(fw, x2)
-        # Offsets into the output region where the valid pixels go
-        dy_off = sy1 - y1  # how many rows of padding at top
-        dx_off = sx1 - x1  # how many cols of padding at left
-        nes_region = np.zeros((crop_h, crop_w, 3), dtype=np.uint8)
-        if sy2 > sy1 and sx2 > sx1:
-            nes_region[dy_off:dy_off + (sy2 - sy1),
-                       dx_off:dx_off + (sx2 - sx1)] = frame[sy1:sy2, sx1:sx2]
+        # Extract NES game region at native resolution.
+        # Handle negative crop_y/crop_x: extract_nes_crop pads with black.
+        nes_region = extract_nes_crop(frame, crop_x, crop_y, crop_w, crop_h)
 
         # Apply sub-crop if detected (tighter NES game boundaries)
         if sub_crop is not None:
             sx, sy, sw, sh = sub_crop
             nes_region = nes_region[sy:sy + sh, sx:sx + sw]
+            scale_x = sw / 256.0
+            scale_y = sh / 240.0
+        else:
+            scale_x = crop_w / 256.0
+            scale_y = crop_h / 240.0
 
-        # Resize to canonical 256x240 using nearest-neighbor
-        nes_canonical = cv2.resize(nes_region, (256, 240),
-                                    interpolation=cv2.INTER_NEAREST)
+        # Create NESFrame — the single source of truth for all detectors
+        nf = NESFrame(nes_region, scale_x, scale_y, grid_dx, grid_dy)
 
         # Save first frame for debugging
         if not first_frame_saved:
@@ -358,21 +350,24 @@ def main():
             dbg_dir = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '..', 'data')
             _os.makedirs(dbg_dir, exist_ok=True)
             dbg_path = _os.path.join(dbg_dir, f'vision-firstframe-{args.racer[:8]}.png')
-            cv2.imwrite(dbg_path, nes_canonical)
-            print(f'[Vision] Saved first canonical frame to {dbg_path}', file=sys.stderr)
+            cv2.imwrite(dbg_path, nf.to_canonical())
+            print(f'[Vision] Saved first frame to {dbg_path}', file=sys.stderr)
 
         # Try calibration on every frame until it succeeds
         if not calibrated:
+            canonical = nf.to_canonical()
+
             # Method 1: Direct grid alignment on canonical frame (works when crop is tight)
-            detected = find_grid_alignment(nes_canonical)
+            detected = find_grid_alignment(canonical)
             if detected is not None:
                 grid_dx, grid_dy, life_row = detected
+                nf.grid_dx = grid_dx
+                nf.grid_dy = grid_dy
                 calibrated = True
                 diag_done = False
-                first_frame_saved = False  # save new first frame with corrected crop
+                first_frame_saved = False
                 detector = NesStateDetector(args.templates,
-                                            grid_offset=(grid_dx, grid_dy),
-                                            life_row=life_row)
+                                            life_row=life_row, landmarks=landmarks)
                 print(f'[Vision] Auto-calibrated (grid): dx={grid_dx} dy={grid_dy} '
                       f'life_row={life_row} (frame {frame_count + 1})',
                       file=sys.stderr)
@@ -383,52 +378,40 @@ def main():
                 life_text_attempts += 1
                 if life_text_attempts % 5 == 1:
                     # Use the original nes_region (before sub-crop), full resolution
-                    region_for_cal = frame[crop_y:crop_y + crop_h, crop_x:crop_x + crop_w]
+                    region_for_cal = extract_nes_crop(frame, crop_x, crop_y, crop_w, crop_h)
+                    # calibrate_from_life_text expects a raw BGR frame
                     cal = calibrate_from_life_text(region_for_cal)
                     if cal is not None:
                         sc_x, sc_y, sc_w, sc_h = cal['crop']
                         sub_crop = (sc_x, sc_y, sc_w, sc_h)
                         grid_dx, grid_dy = cal['grid_offset']
-                        # Re-extract canonical with sub-crop applied
-                        tight_region = region_for_cal[sc_y:sc_y + sc_h, sc_x:sc_x + sc_w]
-                        nes_canonical = cv2.resize(tight_region, (256, 240),
-                                                    interpolation=cv2.INTER_NEAREST)
-                        # Now try grid alignment on the tight canonical
-                        detected2 = find_grid_alignment(nes_canonical)
+                        # Re-extract with sub-crop applied
+                        nes_region = region_for_cal[sc_y:sc_y + sc_h, sc_x:sc_x + sc_w]
+                        scale_x = sc_w / 256.0
+                        scale_y = sc_h / 240.0
+                        nf = NESFrame(nes_region, scale_x, scale_y, grid_dx, grid_dy)
+                        # Try grid alignment on the tight canonical
+                        tight_canonical = nf.to_canonical()
+                        detected2 = find_grid_alignment(tight_canonical)
                         if detected2 is not None:
                             grid_dx, grid_dy, life_row = detected2
+                            nf.grid_dx = grid_dx
+                            nf.grid_dy = grid_dy
                         calibrated = True
                         diag_done = False
                         first_frame_saved = False
                         detector = NesStateDetector(args.templates,
-                                                    grid_offset=(grid_dx, grid_dy),
-                                                    life_row=life_row)
+                                                    life_row=life_row, landmarks=landmarks)
                         print(f'[Vision] Auto-calibrated (LIFE-text sub-crop): '
                               f'sub_crop=({sc_x},{sc_y},{sc_w},{sc_h}) '
                               f'dx={grid_dx} dy={grid_dy} life_row={life_row} '
                               f'(frame {frame_count + 1})', file=sys.stderr)
 
-        # Always use native resolution for all detectors.
-        # Compute effective crop: if sub_crop was applied, the actual NES region
-        # in stream space is offset by (sx, sy) within the original crop.
-        if sub_crop is not None:
-            sx, sy, sw, sh = sub_crop
-            eff_crop_x = crop_x + sx
-            eff_crop_y = crop_y + sy
-            eff_crop_w = sw
-            eff_crop_h = sh
-        else:
-            eff_crop_x, eff_crop_y = crop_x, crop_y
-            eff_crop_w, eff_crop_h = crop_w, crop_h
+        # Process the frame
+        process_frame(nf)
 
-        detector.set_native_frame(frame, eff_crop_x, eff_crop_y, eff_crop_w, eff_crop_h)
-        try:
-            process_frame(nes_canonical)
-        finally:
-            detector.clear_native_frame()
-
-        # Overwrite live preview frame for VisionLab
-        cv2.imwrite(frame_out_path, nes_canonical, [cv2.IMWRITE_JPEG_QUALITY, 75])
+        # Overwrite live preview frame for VisionLab (canonical size for display)
+        cv2.imwrite(frame_out_path, nf.to_canonical(), [cv2.IMWRITE_JPEG_QUALITY, 75])
 
 
 if __name__ == '__main__':

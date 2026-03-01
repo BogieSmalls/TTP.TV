@@ -1,65 +1,85 @@
 # vision/tests/test_nes_state_native.py
+"""Tests for NesStateDetector with NESFrame at native resolution.
+
+Replaces old tests that tested set_native_frame/clear_native_frame
+propagation to sub-detectors. With NESFrame, all detectors receive
+the NESFrame directly via detect(nf).
+"""
 import numpy as np
 import pytest
-from detector.nes_state import NesStateDetector
+from detector.nes_state import NesStateDetector, GameState
+from detector.nes_frame import NESFrame, extract_nes_crop
 
 
-def _make_native_dungeon_frame(crop_w=960, crop_h=720):
-    """Full stream frame + crop params simulating a 960x720 game region."""
-    stream = np.zeros((720, 1280, 3), dtype=np.uint8)
-    crop_x, crop_y = 160, 0  # centered in 1280x720
-    # Put red LIFE text at NES (177, 42) -> stream (160 + round(177*3.75), round(42*3.0))
-    sx = crop_x + round(177 * (crop_w / 256))
-    sy = crop_y + round(42  * (crop_h / 240))
-    tw = max(1, round(8 * crop_w / 256))
-    th = max(1, round(8 * crop_h / 240))
-    stream[sy:sy + th, sx:sx + tw] = [0, 0, 200]
+def _make_native_nes_region(crop_w=960, crop_h=720):
+    """Create a native-resolution NES region with red LIFE text and dark game area."""
+    region = np.zeros((crop_h, crop_w, 3), dtype=np.uint8)
+    scale_x = crop_w / 256.0
+    scale_y = crop_h / 240.0
+    # Red LIFE text at NES (177, 42)
+    sx = round(177 * scale_x)
+    sy = round(42 * scale_y)
+    tw = max(1, round(8 * scale_x))
+    th = max(1, round(8 * scale_y))
+    region[sy:sy + th, sx:sx + tw] = [0, 0, 200]
     # Dark game area
-    game_y = crop_y + round(64 * crop_h / 240)
-    stream[game_y:crop_y + crop_h, crop_x:crop_x + crop_w] = 20
-    return stream, crop_x, crop_y, crop_w, crop_h
+    game_y = round(64 * scale_y)
+    region[game_y:, :] = 20
+    return region, scale_x, scale_y
 
 
-def test_set_native_frame_propagates_to_hud_reader():
-    det = NesStateDetector('D:/Projects/Streaming/TTPRestream/vision/templates')
-    stream, cx, cy, cw, ch = _make_native_dungeon_frame()
-    det.set_native_frame(stream, cx, cy, cw, ch)
-    assert det.hud_reader._stream_frame is not None
-    assert det.hud_reader._scale_x == pytest.approx(cw / 256.0)
-    det.clear_native_frame()
-    assert det.hud_reader._stream_frame is None
+def test_detect_with_native_nesframe():
+    """NesStateDetector.detect() works with a native-resolution NESFrame."""
+    det = NesStateDetector()
+    region, sx, sy = _make_native_nes_region()
+    nf = NESFrame(region, sx, sy)
+    state = det.detect(nf)
+    assert isinstance(state, GameState)
+    # Should detect as gameplay (LIFE text present)
+    assert state.screen_type in ('overworld', 'dungeon', 'cave')
 
 
-def test_set_native_frame_propagates_to_screen_classifier():
-    det = NesStateDetector('D:/Projects/Streaming/TTPRestream/vision/templates')
-    stream, cx, cy, cw, ch = _make_native_dungeon_frame()
-    det.set_native_frame(stream, cx, cy, cw, ch)
-    assert det.screen_classifier._native_crop is not None
-    assert det.screen_classifier._scale_x == pytest.approx(cw / 256.0)
-    det.clear_native_frame()
-    assert det.screen_classifier._native_crop is None
+def test_detect_with_canonical_nesframe():
+    """NesStateDetector.detect() works with a 256x240 canonical NESFrame."""
+    det = NesStateDetector()
+    frame = np.zeros((240, 256, 3), dtype=np.uint8)
+    nf = NESFrame(frame, 1.0, 1.0)
+    state = det.detect(nf)
+    assert isinstance(state, GameState)
 
 
-def test_set_native_frame_propagates_to_all_detectors():
-    det = NesStateDetector('D:/Projects/Streaming/TTPRestream/vision/templates')
-    stream, cx, cy, cw, ch = _make_native_dungeon_frame()
-    det.set_native_frame(stream, cx, cy, cw, ch)
-    assert det.triforce_reader._native_crop is not None
-    assert det.inventory_reader._native_crop is not None
-    det.clear_native_frame()
-    assert det.triforce_reader._native_crop is None
-    assert det.inventory_reader._native_crop is None
-
-
-def test_set_native_frame_negative_crop_y_pads_correctly():
-    det = NesStateDetector('D:/Projects/Streaming/TTPRestream/vision/templates')
+def test_extract_nes_crop_basic():
+    """extract_nes_crop extracts the correct region from a stream frame."""
     stream = np.full((720, 1280, 3), 128, dtype=np.uint8)
-    crop_x, crop_y, crop_w, crop_h = 160, -25, 960, 720
-    det.set_native_frame(stream, crop_x, crop_y, crop_w, crop_h)
-    nc = det.screen_classifier._native_crop
-    assert nc.shape == (crop_h, crop_w, 3)
+    crop = extract_nes_crop(stream, 160, 0, 960, 720)
+    assert crop.shape == (720, 960, 3)
+    assert np.all(crop == 128)
+
+
+def test_extract_nes_crop_negative_y_pads():
+    """Negative crop_y pads with black pixels instead of wrapping."""
+    stream = np.full((720, 1280, 3), 128, dtype=np.uint8)
+    crop = extract_nes_crop(stream, 160, -25, 960, 720)
+    assert crop.shape == (720, 960, 3)
     # First 25 rows should be black padding
-    assert np.all(nc[:25, :] == 0)
-    # Remaining rows should carry stream content (128)
-    assert np.any(nc[25:, :] > 0)
-    det.clear_native_frame()
+    assert np.all(crop[:25, :] == 0)
+    # Remaining rows should carry stream content
+    assert np.any(crop[25:, :] > 0)
+
+
+def test_detect_returns_all_gamestate_fields():
+    """detect() returns GameState with all expected fields."""
+    det = NesStateDetector()
+    region, sx, sy = _make_native_nes_region()
+    nf = NESFrame(region, sx, sy)
+    state = det.detect(nf)
+    assert hasattr(state, 'screen_type')
+    assert hasattr(state, 'dungeon_level')
+    assert hasattr(state, 'hearts_current')
+    assert hasattr(state, 'rupees')
+    assert hasattr(state, 'keys')
+    assert hasattr(state, 'bombs')
+    assert hasattr(state, 'b_item')
+    assert hasattr(state, 'map_position')
+    assert hasattr(state, 'dungeon_map_rooms')
+    assert hasattr(state, 'triforce_room')

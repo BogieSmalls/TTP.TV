@@ -18,6 +18,7 @@ VISION_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(VISION_DIR))
 
 from detector.nes_state import NesStateDetector
+from detector.nes_frame import NESFrame
 from detector.auto_crop import calibrate_from_life_text, find_grid_alignment
 
 FRAMES_DIR = VISION_DIR.parent / "data" / "extracted-frames" / "silly-rock-8631-v2"
@@ -198,11 +199,11 @@ def frame_results():
             dx, dy = grid_offset
             detector = NesStateDetector(
                 template_dir=str(TEMPLATE_DIR),
-                grid_offset=(dx, dy),
                 life_row=life_row,
                 landmarks=landmarks,
             )
-            state = detector.detect(canonical)
+            nf = NESFrame(canonical, 1.0, 1.0, grid_dx=dx, grid_dy=dy)
+            state = detector.detect(nf)
 
         results[key] = {
             "state": state,

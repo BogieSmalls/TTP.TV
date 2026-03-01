@@ -14,8 +14,7 @@ from typing import Optional
 import cv2
 import numpy as np
 
-# Game area starts below the HUD at row 64
-_HUD_HEIGHT = 64
+from .nes_frame import NESFrame
 
 
 @dataclass
@@ -56,12 +55,12 @@ class ItemDetector:
     def __init__(self, item_reader=None):
         self._item_reader = item_reader
 
-    def detect_items(self, frame: np.ndarray,
+    def detect_items(self, nf: NESFrame,
                      screen_type: str) -> list[DetectedItem]:
         """Detect items in the game area of a NES frame.
 
         Args:
-            frame: 256x240 BGR NES frame.
+            nf: NESFrame wrapping the native-resolution NES crop.
             screen_type: Current screen classification.
 
         Returns:
@@ -70,7 +69,7 @@ class ItemDetector:
         if screen_type not in ('dungeon', 'cave', 'overworld'):
             return []
 
-        game_area = frame[_HUD_HEIGHT:, :]  # 176 x 256 x 3
+        game_area = nf.game_area_canonical()  # 176 x 256 x 3
         items = []
 
         triforce = self._detect_triforce(game_area)

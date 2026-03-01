@@ -19,9 +19,7 @@ import cv2
 import numpy as np
 
 from .item_reader import ItemReader, _SHAPE_TWINS
-
-# Game area starts below the HUD at row 64
-_HUD_HEIGHT = 64
+from .nes_frame import NESFrame
 
 # Wall/border exclusion zone (pixels).  Items appear on the playable
 # interior, not in the outer wall/door tiles.
@@ -89,14 +87,14 @@ class FloorItemDetector:
         # Frame-diff guard state
         self._prev_game_area: np.ndarray | None = None
 
-    def detect(self, frame: np.ndarray, screen_type: str) -> list[FloorItem]:
-        """Detect floor items in a 256x240 NES frame.
+    def detect(self, nf: NESFrame, screen_type: str) -> list[FloorItem]:
+        """Detect floor items in the NES game area.
 
         Only runs on dungeon or overworld screens.  Returns an empty
         list for other screen types or when the game area is unchanged.
 
         Args:
-            frame: 256x240 BGR NES frame (uint8).
+            nf: NESFrame wrapping the native-resolution NES crop.
             screen_type: Current screen classification.
 
         Returns:
@@ -106,7 +104,7 @@ class FloorItemDetector:
             self._prev_game_area = None
             return []
 
-        game_area = frame[_HUD_HEIGHT:]  # 176 x 256 x 3
+        game_area = nf.game_area_canonical()  # 176 x 256 x 3
 
         # Frame-diff guard: skip if unchanged
         if self._prev_game_area is not None:

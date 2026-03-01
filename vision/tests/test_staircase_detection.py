@@ -19,6 +19,12 @@ from detector.item_detector import ItemDetector, DetectedItem
 from detector.item_reader import ItemReader
 from detector.game_logic import GameLogicValidator
 from detector.nes_state import GameState, NesStateDetector
+from detector.nes_frame import NESFrame
+
+
+def _nf(frame):
+    """Wrap a 256x240 canonical frame as NESFrame at 1:1 scale."""
+    return NESFrame(frame, 1.0, 1.0)
 
 TEMPLATE_DIR = VISION_DIR / "templates"
 GOLDEN_FRAMES_DIR = Path(__file__).parent / "golden_frames"
@@ -112,7 +118,7 @@ class TestStaircaseItemDetection:
 
     def test_detects_ring_on_pedestal(self, item_detector, pedestal_frame):
         """Should detect a ring item on the staircase pedestal."""
-        items = item_detector.detect_items(pedestal_frame, 'dungeon')
+        items = item_detector.detect_items(_nf(pedestal_frame),'dungeon')
         staircase_items = [i for i in items if i.item_type not in ('triforce',)]
         assert len(staircase_items) >= 1, "Should detect the item on the pedestal"
         item = staircase_items[0]
@@ -123,7 +129,7 @@ class TestStaircaseItemDetection:
 
     def test_no_item_on_empty_pedestal(self, item_detector, hoisted_frame):
         """Should not detect an item on the pedestal when Link has picked it up."""
-        items = item_detector.detect_items(hoisted_frame, 'dungeon')
+        items = item_detector.detect_items(_nf(hoisted_frame),'dungeon')
         staircase_items = [i for i in items if i.item_type not in ('triforce',)]
         assert len(staircase_items) == 0, (
             f"Should not detect items on empty pedestal, got {staircase_items}"
@@ -132,7 +138,7 @@ class TestStaircaseItemDetection:
     def test_only_runs_in_dungeon(self, item_detector, pedestal_frame):
         """Staircase detection should only activate for dungeon screen_type."""
         for screen_type in ('overworld', 'cave', 'subscreen', 'death', 'title'):
-            items = item_detector.detect_items(pedestal_frame, screen_type)
+            items = item_detector.detect_items(_nf(pedestal_frame),screen_type)
             staircase_items = [i for i in items if i.item_type not in ('triforce',)]
             # Overworld/cave might still detect triforce but not staircase items
             # (staircase detection is dungeon-only)
@@ -142,13 +148,13 @@ class TestStaircaseItemDetection:
     def test_dark_frame_no_detection(self, item_detector):
         """All-black frame should not produce staircase item detections."""
         frame = make_dark_frame()
-        items = item_detector.detect_items(frame, 'dungeon')
+        items = item_detector.detect_items(_nf(frame),'dungeon')
         assert len(items) == 0
 
     def test_synthetic_bomb_on_pedestal(self, item_reader, item_detector):
         """Placing a bomb template at the pedestal position should detect 'bomb'."""
         frame = make_pedestal_frame_with_item(item_reader, 'bomb')
-        items = item_detector.detect_items(frame, 'dungeon')
+        items = item_detector.detect_items(_nf(frame),'dungeon')
         staircase_items = [i for i in items if i.item_type not in ('triforce',)]
         assert len(staircase_items) >= 1
         assert staircase_items[0].item_type == 'bomb'
@@ -156,7 +162,7 @@ class TestStaircaseItemDetection:
     def test_synthetic_heart_container_on_pedestal(self, item_reader, item_detector):
         """Placing heart_container template at pedestal should detect it."""
         frame = make_pedestal_frame_with_item(item_reader, 'heart_container')
-        items = item_detector.detect_items(frame, 'dungeon')
+        items = item_detector.detect_items(_nf(frame),'dungeon')
         staircase_items = [i for i in items if i.item_type not in ('triforce',)]
         assert len(staircase_items) >= 1
         assert staircase_items[0].item_type == 'heart_container'
@@ -166,7 +172,7 @@ class TestStaircaseItemDetection:
         det = ItemDetector(item_reader=item_reader)
         # Frame with bright pixels throughout the pedestal hot zone
         frame = np.ones((240, 256, 3), dtype=np.uint8) * 120
-        items = det.detect_items(frame, 'dungeon')
+        items = det.detect_items(_nf(frame),'dungeon')
         staircase_items = [i for i in items if i.item_type not in ('triforce',)]
         assert len(staircase_items) == 0, "Bright region should be rejected by isolation check"
 

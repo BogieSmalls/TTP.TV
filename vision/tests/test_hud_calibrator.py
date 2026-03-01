@@ -1,6 +1,7 @@
 import numpy as np
 from detector.hud_calibrator import CalibrationResult, HudCalibrator
 from detector.hud_reader import HudReader
+from detector.nes_frame import NESFrame
 
 
 def _make_frame() -> np.ndarray:
@@ -277,6 +278,7 @@ def test_read_hearts_uses_calibrated_life_y():
     frame[32:40, 176:199, 2] = 200  # red (BGR channel 2)
     frame[32:40, 176:199, 1] = 30
     frame[32:40, 176:199, 0] = 30
-    cur, max_h, half = reader.read_hearts(frame)
+    nf = NESFrame(frame, 1.0, 1.0)
+    cur, max_h, half = reader.read_hearts(nf)
     # Should detect at least some hearts (not 0)
     assert cur >= 1

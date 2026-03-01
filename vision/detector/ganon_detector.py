@@ -17,8 +17,7 @@ import os
 import cv2
 import numpy as np
 
-# Game area starts below the HUD at row 64
-_HUD_HEIGHT = 64
+from .nes_frame import NESFrame
 
 # Default threshold — slightly lower than floor items (0.85) because
 # enemy sprites suffer more from Twitch compression variance.
@@ -51,7 +50,7 @@ class GanonDetector:
                 self._templates[os.path.splitext(fname)[0]] = \
                     img.astype(np.float32)
 
-    def detect(self, frame: np.ndarray, screen_type: str,
+    def detect(self, nf: NESFrame, screen_type: str,
                dungeon_level: int) -> bool:
         """Check whether Ganon's sprite is visible in the game area.
 
@@ -59,7 +58,7 @@ class GanonDetector:
         all other screen types or dungeon levels.
 
         Args:
-            frame: 256x240 BGR NES frame (uint8).
+            nf: NESFrame wrapping the native-resolution NES crop.
             screen_type: Current screen classification.
             dungeon_level: Current dungeon level (0 = overworld).
 
@@ -72,7 +71,7 @@ class GanonDetector:
         if not self._templates:
             return False
 
-        game_area = frame[_HUD_HEIGHT:].astype(np.float32)
+        game_area = nf.game_area_canonical().astype(np.float32)
 
         for tmpl in self._templates.values():
             th, tw = tmpl.shape[:2]
