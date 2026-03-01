@@ -8,32 +8,34 @@ export interface TileDef {
   templateGroup: string;
 }
 
+// Canonical NES positions derived from tileGrid.js.
+// LIFE row is at NES y=16 (same row as rupees). All row offsets relative to LIFE.
+// See server/src/public/vision-tab/tileGrid.js for the canonical layout.
 export const TILE_DEFS: TileDef[] = [
-  // Rupees: 3 tiles at cols 12-14, row 2
-  { id: 'rupee_0', nesX: 12*8, nesY: 2*8, size: '8x8', templateGroup: '8x8' },
-  { id: 'rupee_1', nesX: 13*8, nesY: 2*8, size: '8x8', templateGroup: '8x8' },
-  { id: 'rupee_2', nesX: 14*8, nesY: 2*8, size: '8x8', templateGroup: '8x8' },
+  // Rupees: cols 13-15 (1-indexed), LIFE row (+0) -> nesY = 16
+  { id: 'rupee_0', nesX: 96,  nesY: 16, size: '8x8', templateGroup: '8x8' },
+  { id: 'rupee_1', nesX: 104, nesY: 16, size: '8x8', templateGroup: '8x8' },
+  { id: 'rupee_2', nesX: 112, nesY: 16, size: '8x8', templateGroup: '8x8' },
 
-  // Keys: cols 13-14, row 4
-  { id: 'key_0', nesX: 13*8, nesY: 4*8, size: '8x8', templateGroup: '8x8' },
-  { id: 'key_1', nesX: 14*8, nesY: 4*8, size: '8x8', templateGroup: '8x8' },
+  // Keys: cols 14-15 (1-indexed), LIFE row +2 -> nesY = 32
+  { id: 'key_0', nesX: 104, nesY: 32, size: '8x8', templateGroup: '8x8' },
+  { id: 'key_1', nesX: 112, nesY: 32, size: '8x8', templateGroup: '8x8' },
 
-  // Bombs: cols 13-14, row 5
-  { id: 'bomb_0', nesX: 13*8, nesY: 5*8, size: '8x8', templateGroup: '8x8' },
-  { id: 'bomb_1', nesX: 14*8, nesY: 5*8, size: '8x8', templateGroup: '8x8' },
+  // Bombs: cols 14-15 (1-indexed), LIFE row +3 -> nesY = 40
+  { id: 'bomb_0', nesX: 104, nesY: 40, size: '8x8', templateGroup: '8x8' },
+  { id: 'bomb_1', nesX: 112, nesY: 40, size: '8x8', templateGroup: '8x8' },
 
-  // Dungeon level: col 8, row 1
-  { id: 'dungeon_lvl', nesX: 8*8, nesY: 1*8, size: '8x8', templateGroup: '8x8' },
+  // Dungeon level: col 10 (1-indexed), LIFE row -1 -> nesY = 8
+  { id: 'dungeon_lvl', nesX: 72, nesY: 8, size: '8x8', templateGroup: '8x8' },
 
-  // B item: col 16-17, rows 3-4 (8×16 sprite)
-  { id: 'b_item', nesX: 16*8, nesY: 3*8, size: '8x16', templateGroup: '8x16' },
+  // B item: col 17 (1-indexed), LIFE row +1 -> nesY = 24 (8x16 sprite)
+  { id: 'b_item', nesX: 128, nesY: 24, size: '8x16', templateGroup: '8x16' },
 
-  // Sword (A item area, right half): col 20, rows 3-4
-  { id: 'sword', nesX: 20*8+4, nesY: 3*8, size: '8x16', templateGroup: '8x16' },
+  // Sword (A item): col 20 (1-indexed), LIFE row +1 -> nesY = 24 (8x16 sprite)
+  { id: 'sword', nesX: 152, nesY: 24, size: '8x16', templateGroup: '8x16' },
 ];
 
 // Template name registry — populated at server startup from templateServer response
-// Used by PixelInterpreter to map template index → name
 export const TEMPLATE_NAMES: Record<string, string[]> = {
   '8x8': [],
   '8x16': [],
