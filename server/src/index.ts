@@ -108,7 +108,8 @@ async function main() {
   // ─── Vision Pipeline Controller (RawPixelState → events) ───
   const visionController = new VisionPipelineController(visionWorkerManager);
   visionController.onGameEvents((racerId, events) => {
-    io.emit('vision:events', { racerId, events });
+    io.to('overlay').emit('vision:events', { racerId, events });
+    io.to('vision').emit('vision:events', { racerId, events });
   });
 
   // ─── Learn Session Manager ───
@@ -372,7 +373,7 @@ async function main() {
   app.use('/api/vision', templateRouter);
 
   // Vision preview/debug/state REST endpoints (operator tooling)
-  app.use('/api/vision', createVisionRoutes(visionWorkerManager));
+  app.use('/api/vision', createVisionRoutes(visionWorkerManager, visionController));
 
   // API routes
   const apiRouter = createApiRoutes({
@@ -559,6 +560,7 @@ async function main() {
         learnManager.cancelSession(s.id);
       }
     }
+    await visionWorkerManager.stop();
     await visionManager.stopAll();
     await streamManager.stopAll();
     streamManager.stop();

@@ -114,9 +114,14 @@ function sendPreview() {
   ctx.drawImage(video, 0, 0, 320, 240);
   canvas.toBlob(blob => {
     if (!blob) return;
-    blob.arrayBuffer().then(buf => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(buf);
-    });
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result.split(',')[1];
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'previewFrame', racerId, jpeg: base64 }));
+      }
+    };
+    reader.readAsDataURL(blob);
   }, 'image/jpeg', 0.85);
 }
 

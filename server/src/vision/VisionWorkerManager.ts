@@ -56,9 +56,10 @@ export class VisionWorkerManager {
             this.cacheFrame(racerId, msg.jpeg);
           } else if (msg.type === 'debugFrame' && typeof msg.jpeg === 'string') {
             this.cacheDebugFrame(racerId, msg.jpeg);
-          } else {
-            const state = msg as RawPixelState;
-            this.onStateCallback?.(state);
+          } else if (msg.type === 'heartbeat') {
+            // intentionally ignored — tab keepalive, not game state
+          } else if (msg.type === 'rawState') {
+            this.onStateCallback?.(msg as RawPixelState);
           }
         } catch { /* ignore malformed */ }
       });
