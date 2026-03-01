@@ -1,6 +1,6 @@
 import { Browser, chromium, Page } from 'playwright';
 import { RacerConfig, RawPixelState } from './types.js';
-import type { StableGameState } from './StateStabilizer.js';
+import type { StableGameState } from './types.js';
 // WebSocket is the Node.js 22 built-in global — no import needed (consistent with RaceMonitor.ts)
 
 export class VisionWorkerManager {

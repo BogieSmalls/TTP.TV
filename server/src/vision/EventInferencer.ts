@@ -1,5 +1,4 @@
-import { GameEvent, GameEventType } from './types.js';
-import { StableGameState } from './StateStabilizer.js';
+import type { GameEvent, GameEventType, StableGameState } from './types.js';
 
 const PRIORITY: Record<GameEventType, GameEvent['priority']> = {
   death: 'high', triforce_inferred: 'high', game_complete: 'high',

@@ -57,12 +57,35 @@ export interface GameEvent {
   data?: Record<string, unknown>;
 }
 
+export interface StableGameState {
+  screenType: string;
+  dungeonLevel: number;
+  rupees: number;
+  keys: number;
+  bombs: number;
+  heartsCurrentStable: number;
+  heartsMaxStable: number;
+  bItem: string | null;
+  swordLevel: number;
+  hasMasterKey: boolean;
+  mapPosition: number;
+  floorItems: Array<{ name: string; x: number; y: number; score: number }>;
+  triforceCollected: number;
+}
+
 export interface PendingFieldInfo {
   field: string;
   stableValue: unknown;
   pendingValue: unknown;
   count: number;
   threshold: number;
+}
+
+export interface WebGPUStateUpdate {
+  racerId: string;
+  raw: RawGameState;
+  stable: StableGameState;
+  pending: PendingFieldInfo[];
 }
 
 export type RacerRole = 'monitored' | 'featured';

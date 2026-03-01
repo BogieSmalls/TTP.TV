@@ -1,4 +1,4 @@
-import type { RawGameState, PendingFieldInfo } from './types.js';
+import type { RawGameState, PendingFieldInfo, StableGameState } from './types.js';
 
 interface TrackerOptions { neverDecrease?: boolean; }
 
@@ -39,22 +39,6 @@ export class StreakTracker<T> {
   get pendingCount(): number { return this.count; }
   get streakThreshold(): number { return this.threshold; }
   reset(v: T): void { this.current = v; this.pending = v; this.count = 0; }
-}
-
-export interface StableGameState {
-  screenType: string;
-  dungeonLevel: number;
-  rupees: number;
-  keys: number;
-  bombs: number;
-  heartsCurrentStable: number;
-  heartsMaxStable: number;
-  bItem: string | null;
-  swordLevel: number;
-  hasMasterKey: boolean;
-  mapPosition: number;
-  floorItems: Array<{ name: string; x: number; y: number; score: number }>;
-  triforceCollected: number;
 }
 
 export class StateStabilizer {

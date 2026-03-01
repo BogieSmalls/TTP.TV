@@ -1,20 +1,12 @@
 import { VisionWorkerManager } from './VisionWorkerManager.js';
 import { PixelInterpreter } from './PixelInterpreter.js';
 import { StateStabilizer } from './StateStabilizer.js';
-import type { StableGameState } from './StateStabilizer.js';
 import { EventInferencer } from './EventInferencer.js';
 import { PlayerItemTracker } from './PlayerItemTracker.js';
 import { RaceItemTracker } from './RaceItemTracker.js';
 import { FloorItemTracker } from './FloorItemTracker.js';
 import { MinimapReader } from './MinimapReader.js';
-import type { RawPixelState, RawGameState, GameEvent, PendingFieldInfo } from './types.js';
-
-export interface WebGPUStateUpdate {
-  racerId: string;
-  raw: RawGameState;
-  stable: StableGameState;
-  pending: PendingFieldInfo[];
-}
+import type { RawPixelState, RawGameState, GameEvent, PendingFieldInfo, WebGPUStateUpdate } from './types.js';
 
 interface RacerPipeline {
   interpreter: PixelInterpreter;
