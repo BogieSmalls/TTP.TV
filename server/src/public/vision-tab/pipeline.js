@@ -1,5 +1,6 @@
 import { AGGREGATE_SHADER, NCC_SHADER, ROOM_SHADER, FLOOR_ITEM_SHADER } from './shaders.js';
 import { TILE_DEFS, MAX_TEMPLATES } from './tileDefs.js';
+import { DEFAULT_LIFE_NES_X, DEFAULT_LIFE_NES_Y } from './tileGrid.js';
 
 export class VisionPipeline {
   constructor(gpu, calib) {
@@ -12,9 +13,10 @@ export class VisionPipeline {
   _init() {
     const d = this.device;
 
-    // Calibration uniform buffer (8 floats = 32 bytes)
+    // Calibration uniform buffer (12 floats = 48 bytes; WGSL struct alignment rounds to 16-byte)
+    // Fields: crop_x, crop_y, scale_x, scale_y, grid_dx, grid_dy, video_w, video_h, life_nes_x, life_nes_y, pad, pad
     this.calibBuffer = d.createBuffer({
-      size: 8 * 4,
+      size: 12 * 4,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     this._updateCalib();
@@ -231,16 +233,51 @@ export class VisionPipeline {
 
   _updateCalib() {
     const c = this.calib;
+    // life_nes_x/y default to standard NES LIFE position (col 22, row 5) minus grid offset,
+    // so that nes_to_uv(life_nes_x, life_nes_y) + gridDx/gridDy hits the correct spot.
+    const lifeX = c.lifeNesX ?? (DEFAULT_LIFE_NES_X - (c.gridDx || 0));
+    const lifeY = c.lifeNesY ?? (DEFAULT_LIFE_NES_Y - (c.gridDy || 0));
     const data = new Float32Array([
       c.cropX, c.cropY, c.scaleX, c.scaleY,
       c.gridDx, c.gridDy, c.videoWidth, c.videoHeight,
+      lifeX, lifeY, 0, 0,  // pad to 12 floats for 16-byte alignment
     ]);
     this.device.queue.writeBuffer(this.calibBuffer, 0, data);
+  }
+
+  /** Update tile definitions buffer with new NES positions (from landmarks). */
+  updateTileDefs(updatedDefs) {
+    if (!this.tileDefsBuffer) return;
+    const tileStride = 24;
+    const tileBuf = new ArrayBuffer(updatedDefs.length * tileStride);
+    const view = new DataView(tileBuf);
+    updatedDefs.forEach((def, i) => {
+      const off = i * tileStride;
+      view.setFloat32(off + 0,  def.nesX, true);
+      view.setFloat32(off + 4,  def.nesY, true);
+      view.setUint32( off + 8,  parseInt(def.size.split('x')[0]), true);
+      view.setUint32( off + 12, def.size === '8x8' ? 8 : 16, true);
+      const meta = this.gpu.templateMeta[def.templateGroup] || [];
+      view.setUint32( off + 16, 0, true);
+      view.setUint32( off + 20, meta.length, true);
+    });
+    this.device.queue.writeBuffer(this.tileDefsBuffer, 0, tileBuf);
   }
 
   updateCalib(calib) {
     Object.assign(this.calib, calib);
     this._updateCalib();
+    // Propagate to room/floor item calibration buffers
+    this._updateRoomCalib({
+      scale_x: this.calib.scaleX, scale_y: this.calib.scaleY,
+      offset_x: this.calib.cropX,  offset_y: this.calib.cropY,
+      video_w: this.calib.videoWidth, video_h: this.calib.videoHeight,
+    });
+    this._updateFloorItemCalib({
+      scale_x: this.calib.scaleX, scale_y: this.calib.scaleY,
+      offset_x: this.calib.cropX,  offset_y: this.calib.cropY,
+      video_w: this.calib.videoWidth, video_h: this.calib.videoHeight,
+    });
   }
 
   async processFrame(video) {
@@ -394,8 +431,11 @@ export class VisionPipeline {
       }
     }
 
+    // Brightness: sum of (luma * 1000) for 2816 sampled pixels (64×44, game area stepped by 4).
+    // Normalize to mean brightness on 0-255 scale: sum / 1000 / 2816 * 255.
+    // Red: count of red pixels (each contributes 1000), divide by 1000.
     return {
-      gameBrightness: raw[0] / 1000,
+      gameBrightness: raw[0] / 1000 / 2816 * 255,
       redRatioAtLife: raw[1] / 1000,
       goldPixelCount: raw[2],
       hudScores,

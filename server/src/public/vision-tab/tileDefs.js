@@ -1,30 +1,121 @@
-// HUD tile definitions. Each entry: { id, nesX, nesY, size, templateGroup }
-// nesX/nesY: top-left of tile in NES pixel coords (before grid offset)
+import { computeTilePositions, DEFAULT_LIFE_NES_X, DEFAULT_LIFE_NES_Y } from './tileGrid.js';
+
+// -- HUD tile definitions -------------------------------------------------------
+// Each entry: { id, nesX, nesY, size, templateGroup }
+// nesX/nesY: top-left of tile in canonical NES coords (before grid offset).
 // Grid offset (gridDx, gridDy) is applied by the shader via the calibration uniform.
+//
+// DEFAULT positions are computed from the canonical tile grid (tileGrid.js).
+// When crop-profile landmarks are available, use applyLandmarks() to
+// recompute from actual stream positions.
+
+const defaults = computeTilePositions(DEFAULT_LIFE_NES_Y);
 
 export const TILE_DEFS = [
-  // Rupees: 3 tiles at cols 12-14, row 2
-  { id: 'rupee_0', nesX: 12*8, nesY: 2*8, size: '8x8', templateGroup: '8x8' },
-  { id: 'rupee_1', nesX: 13*8, nesY: 2*8, size: '8x8', templateGroup: '8x8' },
-  { id: 'rupee_2', nesX: 14*8, nesY: 2*8, size: '8x8', templateGroup: '8x8' },
-
-  // Keys: cols 13-14, row 4
-  { id: 'key_0', nesX: 13*8, nesY: 4*8, size: '8x8', templateGroup: '8x8' },
-  { id: 'key_1', nesX: 14*8, nesY: 4*8, size: '8x8', templateGroup: '8x8' },
-
-  // Bombs: cols 13-14, row 5
-  { id: 'bomb_0', nesX: 13*8, nesY: 5*8, size: '8x8', templateGroup: '8x8' },
-  { id: 'bomb_1', nesX: 14*8, nesY: 5*8, size: '8x8', templateGroup: '8x8' },
-
-  // Dungeon level: col 8, row 1
-  { id: 'dungeon_lvl', nesX: 8*8, nesY: 1*8, size: '8x8', templateGroup: '8x8' },
-
-  // B item: col 16-17, rows 3-4 (8×16 sprite)
-  { id: 'b_item', nesX: 16*8, nesY: 3*8, size: '8x16', templateGroup: '8x16' },
-
-  // Sword (A item area, right half): col 20, rows 3-4
-  { id: 'sword', nesX: 20*8+4, nesY: 3*8, size: '8x16', templateGroup: '8x16' },
+  { id: 'rupee_0', ...defaults.rupee_0, templateGroup: '8x8' },
+  { id: 'rupee_1', ...defaults.rupee_1, templateGroup: '8x8' },
+  { id: 'rupee_2', ...defaults.rupee_2, templateGroup: '8x8' },
+  { id: 'key_0',   ...defaults.key_0,   templateGroup: '8x8' },
+  { id: 'key_1',   ...defaults.key_1,   templateGroup: '8x8' },
+  { id: 'bomb_0',  ...defaults.bomb_0,  templateGroup: '8x8' },
+  { id: 'bomb_1',  ...defaults.bomb_1,  templateGroup: '8x8' },
+  { id: 'dungeon_lvl', ...defaults.dungeon_lvl, templateGroup: '8x8' },
+  { id: 'b_item',  ...defaults.b_item,  templateGroup: '8x16' },
+  { id: 'sword',   ...defaults.sword,   templateGroup: '8x16' },
 ];
 
 // Max templates per tile (must match shader constant MAX_TEMPLATES)
 export const MAX_TEMPLATES = 32;
+
+/**
+ * Recompute tile positions from crop-profile landmarks.
+ * Landmarks are in canonical NES coords (0-255, 0-239) within the crop region.
+ * The shader adds gridDx/gridDy, so we subtract them here to avoid double-counting.
+ * Returns a new TILE_DEFS-shaped array and the LIFE position for the aggregate shader.
+ */
+export function applyLandmarks(landmarks, gridDx, gridDy) {
+  const lm = {};
+  for (const l of landmarks) lm[l.label] = l;
+
+  // Clone defaults
+  const defs = TILE_DEFS.map(d => ({ ...d }));
+
+  // Helper: set tile position from landmark, using right-aligned digit columns
+  function digitX(regionLm, digitIdx) {
+    return regionLm.x + regionLm.w - (digitIdx + 1) * 8 - gridDx;
+  }
+  function lmY(regionLm) {
+    return regionLm.y - gridDy;
+  }
+
+  // Rupees (3 digits, right-aligned in "Rupees" landmark)
+  if (lm['Rupees']) {
+    const r = lm['Rupees'];
+    const set = (id, dIdx) => {
+      const d = defs.find(t => t.id === id);
+      if (d) { d.nesX = digitX(r, dIdx); d.nesY = lmY(r); }
+    };
+    set('rupee_2', 0); // ones (rightmost)
+    set('rupee_1', 1); // tens
+    set('rupee_0', 2); // hundreds
+  }
+
+  // Keys (2 digits, right-aligned in "Keys" landmark)
+  if (lm['Keys']) {
+    const k = lm['Keys'];
+    const set = (id, dIdx) => {
+      const d = defs.find(t => t.id === id);
+      if (d) { d.nesX = digitX(k, dIdx); d.nesY = lmY(k); }
+    };
+    set('key_1', 0);
+    set('key_0', 1);
+  }
+
+  // Bombs (2 digits, right-aligned in "Bombs" landmark)
+  if (lm['Bombs']) {
+    const b = lm['Bombs'];
+    const set = (id, dIdx) => {
+      const d = defs.find(t => t.id === id);
+      if (d) { d.nesX = digitX(b, dIdx); d.nesY = lmY(b); }
+    };
+    set('bomb_1', 0);
+    set('bomb_0', 1);
+  }
+
+  // Dungeon level -- digit at right end of "LVL" landmark
+  if (lm['LVL']) {
+    const lvl = lm['LVL'];
+    const d = defs.find(t => t.id === 'dungeon_lvl');
+    if (d) {
+      d.nesX = lvl.x + lvl.w - 8 - gridDx;
+      d.nesY = lvl.y - gridDy;
+    }
+  }
+
+  // B item -- starts at left edge of "B" landmark
+  if (lm['B']) {
+    const b = lm['B'];
+    const d = defs.find(t => t.id === 'b_item');
+    if (d) { d.nesX = b.x - gridDx; d.nesY = b.y - gridDy; }
+  }
+
+  // Sword/A item -- right half of "A" landmark
+  if (lm['A']) {
+    const a = lm['A'];
+    const d = defs.find(t => t.id === 'sword');
+    if (d) {
+      d.nesX = a.x + a.w - 8 - gridDx;
+      d.nesY = a.y - gridDy;
+    }
+  }
+
+  // LIFE position for aggregate shader (used by red_pass)
+  let lifeNesX = DEFAULT_LIFE_NES_X - gridDx;
+  let lifeNesY = DEFAULT_LIFE_NES_Y - gridDy;
+  if (lm['-LIFE-']) {
+    lifeNesX = lm['-LIFE-'].x - gridDx;
+    lifeNesY = lm['-LIFE-'].y - gridDy;
+  }
+
+  return { defs, lifeNesX, lifeNesY };
+}
