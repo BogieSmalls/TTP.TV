@@ -1,4 +1,4 @@
-import type { RawGameState } from './types.js';
+import type { RawGameState, PendingFieldInfo } from './types.js';
 
 interface TrackerOptions { neverDecrease?: boolean; }
 
@@ -35,6 +35,9 @@ export class StreakTracker<T> {
   }
 
   get value(): T { return this.current; }
+  get pendingValue(): T { return this.pending; }
+  get pendingCount(): number { return this.count; }
+  get streakThreshold(): number { return this.threshold; }
   reset(v: T): void { this.current = v; this.pending = v; this.count = 0; }
 }
 
@@ -87,6 +90,18 @@ export class StateStabilizer {
       floorItems:          raw.floorItems, // floor item tracking handled separately
       triforceCollected:   this.trackers.triforce.update(raw.triforceCollected),
     };
+  }
+
+  getPendingFields(): PendingFieldInfo[] {
+    return (Object.entries(this.trackers) as [string, StreakTracker<unknown>][])
+      .filter(([, t]) => t.pendingValue !== t.value)
+      .map(([field, t]) => ({
+        field,
+        stableValue: t.value,
+        pendingValue: t.pendingValue,
+        count: t.pendingCount,
+        threshold: t.streakThreshold,
+      }));
   }
 
   reset(): void {

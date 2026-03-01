@@ -57,6 +57,14 @@ export interface GameEvent {
   data?: Record<string, unknown>;
 }
 
+export interface PendingFieldInfo {
+  field: string;
+  stableValue: unknown;
+  pendingValue: unknown;
+  count: number;
+  threshold: number;
+}
+
 export type RacerRole = 'monitored' | 'featured';
 
 export interface RacerConfig {
