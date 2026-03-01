@@ -86,6 +86,7 @@ class FloorItemDetector:
 
         # Frame-diff guard state
         self._prev_game_area: np.ndarray | None = None
+        self._prev_detections: list[FloorItem] = []
 
     def detect(self, nf: NESFrame, screen_type: str) -> list[FloorItem]:
         """Detect floor items in the NES game area.

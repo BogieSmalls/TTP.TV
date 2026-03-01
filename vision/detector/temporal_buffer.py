@@ -13,6 +13,7 @@ from typing import Any
 
 import numpy as np
 
+from .nes_frame import NESFrame
 from .nes_state import NesStateDetector, GameState
 
 
@@ -34,16 +35,16 @@ class TemporalBuffer:
         self.stable_state: dict[str, Any] = {}
         self.frame_count = 0
 
-    def process_frame(self, frame: np.ndarray) -> GameState:
+    def process_frame(self, nf: NESFrame) -> GameState:
         """Detect game state with temporal smoothing applied.
 
         Args:
-            frame: 256x240 BGR NES frame.
+            nf: NESFrame wrapping the native-resolution NES crop.
 
         Returns:
             GameState with stable (smoothed) values.
         """
-        raw_state = self.detector.detect(frame)
+        raw_state = self.detector.detect(nf)
         raw_dict = raw_state.to_dict()
         self.frame_count += 1
 
@@ -67,12 +68,12 @@ class TemporalBuffer:
 
         return result
 
-    def get_raw_and_stable(self, frame: np.ndarray) -> tuple[GameState, GameState]:
+    def get_raw_and_stable(self, nf: NESFrame) -> tuple[GameState, GameState]:
         """Return both raw (unsmoothed) and stable (smoothed) state.
 
         Useful for learn mode to compare raw vs smoothed detection.
         """
-        raw_state = self.detector.detect(frame)
+        raw_state = self.detector.detect(nf)
         raw_dict = raw_state.to_dict()
         self.frame_count += 1
 
