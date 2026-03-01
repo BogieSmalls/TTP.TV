@@ -4,11 +4,13 @@ Detects which items the player has collected by examining fixed-position
 item slots on the subscreen (Select button screen). Also detects sword
 level and the currently selected B-item.
 
-All coordinates are for the canonical 256x240 NES frame.
+All coordinates are in NES 256x240 space, mapped to native resolution
+via the NESFrame wrapper.
 """
 
 import numpy as np
 from .color_utils import dominant_channel, color_distance
+from .nes_frame import NESFrame
 
 # NES Zelda 1 subscreen item slot positions (y, x) and tile size.
 # Active items (selectable as B-item) — 2 rows of 4
@@ -49,11 +51,6 @@ BROWN_BGR = np.array([0, 120, 136], dtype=np.uint8)
 WHITE_BGR = np.array([236, 236, 236], dtype=np.uint8)
 
 
-def _extract_tile(frame: np.ndarray, y: int, x: int, h: int, w: int) -> np.ndarray:
-    """Extract a tile region from the frame."""
-    return frame[y:y + h, x:x + w]
-
-
 def _tile_occupied(tile: np.ndarray) -> bool:
     """Check if a tile contains an item (is not empty/black)."""
     return float(np.mean(tile)) > EMPTY_THRESHOLD
@@ -69,51 +66,34 @@ class InventoryReader:
     sword-level changes during gameplay instead.
     """
 
-    def __init__(self):
-        self._native_crop = None
-        self._scale_x = 1.0
-        self._scale_y = 1.0
-
-    def set_native_crop(self, crop_frame: np.ndarray,
-                        scale_x: float, scale_y: float) -> None:
-        self._native_crop = crop_frame
-        self._scale_x = scale_x
-        self._scale_y = scale_y
-
-    def clear_native_crop(self) -> None:
-        self._native_crop = None
-
-    def read_items(self, frame: np.ndarray) -> dict:
+    def read_items(self, nf: NESFrame) -> dict:
         """Read all inventory item slots.
 
         Args:
-            frame: 256x240 BGR NES frame (must be on subscreen).
+            nf: NESFrame wrapping the native-resolution NES crop.
 
         Returns:
             Dict of item_name -> True/False, or {} if Z1R SWAP layout.
         """
-        # Detect Z1R SWAP layout: "SWAP" red text at the top of the
-        # subscreen (tile row ~1, col ~12-15).  Vanilla Zelda shows
-        # "INVENTORY" white text instead.
-        if self._is_z1r_swap(frame):
+        if self._is_z1r_swap(nf):
             return {}
 
         items = {}
 
         for name, (y, x, h, w) in ACTIVE_ITEM_SLOTS.items():
-            tile = _extract_tile(frame, y, x, h, w)
+            tile = nf.extract(x, y, w, h)
             items[name] = _tile_occupied(tile)
 
         for name, (y, x, h, w) in PASSIVE_ITEM_SLOTS.items():
-            tile = _extract_tile(frame, y, x, h, w)
+            tile = nf.extract(x, y, w, h)
             items[name] = _tile_occupied(tile)
 
         # Detect item upgrades based on color
-        items = self._detect_upgrades(frame, items)
+        items = self._detect_upgrades(nf, items)
 
         return items
 
-    def _is_z1r_swap(self, frame: np.ndarray) -> bool:
+    def _is_z1r_swap(self, nf: NESFrame) -> bool:
         """Detect Z1R SWAP layout by checking for red "SWAP" text near top.
 
         The Z1R subscreen shows red "SWAP" text at approximately y=0-18,
@@ -125,15 +105,8 @@ class InventoryReader:
         display and produce garbage readings.
         """
         # Check for red text in top 40 rows, x=24-72
-        # SWAP text Y position varies with scroll state (y=0..35)
-        src = self._native_crop if self._native_crop is not None else frame
-        if self._native_crop is not None:
-            y_max = round(40 * self._scale_y)
-            x_min = round(24 * self._scale_x)
-            x_max = round(72 * self._scale_x)
-        else:
-            y_max, x_min, x_max = 40, 24, 72
-        region = src[0:y_max, x_min:x_max]
+        src = nf.crop
+        region = nf.region(24, 0, 48, 40)
         if region.size == 0:
             return False
         r = region[:, :, 2].astype(float)
@@ -148,25 +121,24 @@ class InventoryReader:
         # off-screen.  On a partial scroll, the subscreen content (dark) is
         # at the top, and the game area (bright) is still visible below.
         # Require: dark top (y=0-60) AND bright bottom (y=160-220).
-        if src.shape[0] > round(220 * self._scale_y):
-            top_y   = round(60  * self._scale_y)
-            bot_y1  = round(160 * self._scale_y)
-            bot_y2  = round(220 * self._scale_y)
-            top_bright    = float(np.mean(src[0:top_y, :, :]))
-            bottom_bright = float(np.mean(src[bot_y1:bot_y2, :, :]))
+        top_region = nf.region(0, 0, 256, 60)
+        bot_region = nf.region(0, 160, 256, 60)
+        if top_region.size > 0 and bot_region.size > 0:
+            top_bright = float(np.mean(top_region))
+            bottom_bright = float(np.mean(bot_region))
             if top_bright < 30 and bottom_bright > 80:
                 return True
 
         return False
 
-    def read_sword_level(self, frame: np.ndarray) -> int:
+    def read_sword_level(self, nf: NESFrame) -> int:
         """Detect sword level from the HUD sword indicator.
 
         Returns:
             0 = no sword, 1 = wood, 2 = white, 3 = magical
         """
         y, x, h, w = SWORD_REGION
-        tile = _extract_tile(frame, y, x, h, w)
+        tile = nf.extract(x, y, w, h)
 
         if not _tile_occupied(tile):
             return 0
@@ -185,20 +157,19 @@ class InventoryReader:
         # Wood sword (brown/tan)
         return 1
 
-    def read_b_item(self, frame: np.ndarray) -> str | None:
+    def read_b_item(self, nf: NESFrame) -> str | None:
         """Detect the currently selected B-item from the HUD.
 
         Returns:
             Item name string or None if no B-item.
         """
         y, x, h, w = B_ITEM_REGION
-        tile = _extract_tile(frame, y, x, h, w)
+        tile = nf.extract(x, y, w, h)
 
         if not _tile_occupied(tile):
             return None
 
         # Match against known item colors/shapes
-        # For now, return a generic indicator — refinement needs real frame testing
         dominant = dominant_channel(tile)
         avg_brightness = float(np.mean(tile))
 
@@ -215,7 +186,7 @@ class InventoryReader:
 
         return 'unknown'
 
-    def _detect_upgrades(self, frame: np.ndarray, items: dict) -> dict:
+    def _detect_upgrades(self, nf: NESFrame, items: dict) -> dict:
         """Detect item upgrades based on tile color.
 
         Some items upgrade in-place with color changes:
@@ -226,7 +197,7 @@ class InventoryReader:
         # Boomerang upgrade: magic boomerang is red-tinted
         if items.get('boomerang'):
             y, x, h, w = ACTIVE_ITEM_SLOTS['boomerang']
-            tile = _extract_tile(frame, y, x, h, w)
+            tile = nf.extract(x, y, w, h)
             dominant = dominant_channel(tile)
             if dominant == 'red':
                 items['boomerang'] = False
@@ -237,7 +208,7 @@ class InventoryReader:
         # Candle upgrade: blue candle -> red candle
         if items.get('candle'):
             y, x, h, w = ACTIVE_ITEM_SLOTS['candle']
-            tile = _extract_tile(frame, y, x, h, w)
+            tile = nf.extract(x, y, w, h)
             dominant = dominant_channel(tile)
             if dominant == 'red':
                 items['red_candle'] = True
@@ -249,7 +220,7 @@ class InventoryReader:
         # Potion slot upgrades: letter -> blue potion -> red potion
         if items.get('potion'):
             y, x, h, w = ACTIVE_ITEM_SLOTS['potion']
-            tile = _extract_tile(frame, y, x, h, w)
+            tile = nf.extract(x, y, w, h)
             dominant = dominant_channel(tile)
             if dominant == 'red':
                 items['red_potion'] = True
@@ -267,7 +238,7 @@ class InventoryReader:
         # Ring detection: blue ring vs red ring
         if items.get('ring'):
             y, x, h, w = PASSIVE_ITEM_SLOTS['ring']
-            tile = _extract_tile(frame, y, x, h, w)
+            tile = nf.extract(x, y, w, h)
             dominant = dominant_channel(tile)
             if dominant == 'red':
                 items['red_ring'] = True

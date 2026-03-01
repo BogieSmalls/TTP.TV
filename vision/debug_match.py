@@ -6,6 +6,7 @@ import cv2
 sys.path.insert(0, os.path.dirname(__file__))
 from detector.hud_reader import HudReader
 from detector.digit_reader import DigitReader
+from detector.nes_frame import NESFrame, extract_nes_crop
 
 CROP = {"x": 383, "y": 24, "w": 871, "h": 670}
 STREAM_W, STREAM_H = 1280, 720
@@ -43,7 +44,7 @@ def match_binary_corr(tile_gray, tmpl_gray):
 
 def main():
     digit_reader = DigitReader(TEMPLATE_DIR)
-    hud = HudReader(grid_offset=(0, 0), landmarks=LANDMARKS)
+    hud = HudReader(landmarks=LANDMARKS)
 
     proc = subprocess.run(
         ["streamlink", "--stream-url", VOD_URL, "best"],
@@ -71,8 +72,9 @@ def main():
 
         sf = np.frombuffer(proc.stdout, dtype=np.uint8).reshape((STREAM_H, STREAM_W, 3))
         x, y, w, h = CROP["x"], CROP["y"], CROP["w"], CROP["h"]
-        canonical = cv2.resize(sf[y:y+h, x:x+w], (256, 240), interpolation=cv2.INTER_NEAREST)
-        hud.set_stream_source(sf, x, y, w, h)
+        nes_region = extract_nes_crop(sf, x, y, w, h)
+        nf = NESFrame(nes_region, w / 256.0, h / 240.0, grid_dx=0, grid_dy=0)
+        canonical = nf.to_canonical()
 
         print(f"\n=== t={ts} ===")
 
@@ -84,7 +86,7 @@ def main():
             # Only check last N digits where N = len(exp_digits)
             check_cols = cols[-len(exp_digits):]
             for col, exp_d in zip(check_cols, exp_digits):
-                tile = hud._tile(canonical, col, row)
+                tile = nf.tile(col, row)
                 gray = cv2.cvtColor(tile, cv2.COLOR_BGR2GRAY)
 
                 # Save side-by-side comparison (tile vs expected template)
@@ -120,7 +122,7 @@ def main():
                         print(f"    d={d}: ccoeff={s1:.3f} xor={s2:.3f} "
                               f"bin_corr={s3:.3f}{marker}")
 
-        hud.clear_stream_source()
+        # nf goes out of scope at next iteration
 
 
 if __name__ == "__main__":

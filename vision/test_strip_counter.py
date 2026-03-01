@@ -6,6 +6,7 @@ import cv2
 sys.path.insert(0, os.path.dirname(__file__))
 from detector.hud_reader import HudReader
 from detector.digit_reader import DigitReader
+from detector.nes_frame import NESFrame, extract_nes_crop
 
 CROP = {"x": 383, "y": 24, "w": 871, "h": 670}
 STREAM_W, STREAM_H = 1280, 720
@@ -34,16 +35,15 @@ GROUND_TRUTH = {
 
 def main():
     digit_reader = DigitReader(TEMPLATE_DIR)
-    hud = HudReader(grid_offset=(0, 0), landmarks=LANDMARKS)
+    hud = HudReader(landmarks=LANDMARKS)
 
-    # Verify new landmark attrs exist
-    assert hasattr(hud, '_rupee_lm'), "Missing _rupee_lm"
-    assert hasattr(hud, '_key_lm'), "Missing _key_lm"
-    assert hasattr(hud, '_bomb_lm'), "Missing _bomb_lm"
-    print(f"Grid offset: dx={hud.grid_dx}, dy={hud.grid_dy}")
-    print(f"Rupee lm: {hud._rupee_lm}")
-    print(f"Key lm: {hud._key_lm}")
-    print(f"Bomb lm: {hud._bomb_lm}")
+    # Look up landmark dicts directly
+    _rupee_lm = next(l for l in LANDMARKS if l['label'] == 'Rupees')
+    _key_lm = next(l for l in LANDMARKS if l['label'] == 'Keys')
+    _bomb_lm = next(l for l in LANDMARKS if l['label'] == 'Bombs')
+    print(f"Rupee lm: {_rupee_lm}")
+    print(f"Key lm: {_key_lm}")
+    print(f"Bomb lm: {_bomb_lm}")
 
     proc = subprocess.run(
         ["streamlink", "--stream-url", VOD_URL, "best"],
@@ -72,16 +72,17 @@ def main():
         canonical = cv2.resize(sf[y:y+h, x:x+w], (256, 240), interpolation=cv2.INTER_NEAREST)
 
         # Test with stream source (primary path)
-        hud.set_stream_source(sf, x, y, w, h)
-        rup = hud.read_rupees(canonical, digit_reader)
-        key_count, master = hud.read_keys(canonical, digit_reader)
-        bmb = hud.read_bombs(canonical, digit_reader)
-        hud.clear_stream_source()
+        nf = NESFrame(extract_nes_crop(sf, x, y, w, h),
+                      w / 256.0, h / 240.0)
+        rup = hud.read_rupees(nf, digit_reader)
+        key_count, master = hud.read_keys(nf, digit_reader)
+        bmb = hud.read_bombs(nf, digit_reader)
 
         # Also test canonical-only path
-        rup_c = hud.read_rupees(canonical, digit_reader)
-        key_c, _ = hud.read_keys(canonical, digit_reader)
-        bmb_c = hud.read_bombs(canonical, digit_reader)
+        nf_canon = NESFrame(canonical, 1.0, 1.0)
+        rup_c = hud.read_rupees(nf_canon, digit_reader)
+        key_c, _ = hud.read_keys(nf_canon, digit_reader)
+        bmb_c = hud.read_bombs(nf_canon, digit_reader)
 
         status_rup = "OK" if rup == exp_rup else f"FAIL(got {rup})"
         status_key = "OK" if key_count == exp_key else f"FAIL(got {key_count})"

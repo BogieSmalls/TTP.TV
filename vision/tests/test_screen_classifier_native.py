@@ -1,11 +1,13 @@
 # vision/tests/test_screen_classifier_native.py
+"""Tests for ScreenClassifier with NESFrame at various resolutions."""
 import numpy as np
 import pytest
 from detector.screen_classifier import ScreenClassifier
+from detector.nes_frame import NESFrame
 
 
 def _make_canonical_dungeon_frame(grid_dx=1, grid_dy=2, life_row=5):
-    """Create a 256×240 frame with red LIFE text and dark game area."""
+    """Create a 256x240 frame with red LIFE text and dark game area."""
     frame = np.zeros((240, 256, 3), dtype=np.uint8)
     # Dark game area (dungeon brightness)
     frame[64:, :] = 20
@@ -24,32 +26,28 @@ def _scale_frame(frame, scale_x, scale_y):
                       interpolation=cv2.INTER_NEAREST)
 
 
-def test_classify_dungeon_at_native_resolution():
-    """ScreenClassifier correctly identifies dungeon at 3.75×3.0 scale."""
-    clf = ScreenClassifier(grid_offset=(1, 2), life_row=5)
+def test_classify_dungeon_at_canonical_resolution():
+    """ScreenClassifier correctly identifies dungeon at 1:1 canonical scale."""
+    clf = ScreenClassifier(life_row=5)
     canonical = _make_canonical_dungeon_frame()
-    # Simulate a 960×720 native crop (typical 4:3 1280×720 stream)
+    nf = NESFrame(canonical, 1.0, 1.0, grid_dx=1, grid_dy=2)
+    assert clf.classify(nf) == 'dungeon'
+
+
+def test_classify_dungeon_at_native_resolution():
+    """ScreenClassifier correctly identifies dungeon at 3.75x3.0 native scale."""
+    clf = ScreenClassifier(life_row=5)
+    canonical = _make_canonical_dungeon_frame()
     scale_x, scale_y = 960 / 256, 720 / 240
     native = _scale_frame(canonical, scale_x, scale_y)
-    clf.set_native_crop(native, scale_x, scale_y)
-    result = clf.classify(canonical)  # canonical still passed, native overrides reads
-    clf.clear_native_crop()
-    assert result == 'dungeon'
+    nf = NESFrame(native, scale_x, scale_y, grid_dx=1, grid_dy=2)
+    assert clf.classify(nf) == 'dungeon'
 
 
-def test_classify_without_native_still_works():
-    """When no native crop is set, classify() uses the canonical frame as before."""
-    clf = ScreenClassifier(grid_offset=(1, 2), life_row=5)
-    canonical = _make_canonical_dungeon_frame()
-    assert clf.classify(canonical) == 'dungeon'
-
-
-def test_native_crop_cleared_after_clear():
-    """After clear_native_crop(), uses canonical frame."""
-    clf = ScreenClassifier(grid_offset=(1, 2), life_row=5)
-    canonical = _make_canonical_dungeon_frame()
-    native = _scale_frame(canonical, 3.75, 3.0)
-    clf.set_native_crop(native, 3.75, 3.0)
-    clf.clear_native_crop()
-    # Should still work with canonical (no crash, correct result)
-    assert clf.classify(canonical) == 'dungeon'
+def test_classify_dark_frame_not_gameplay():
+    """A fully black frame should not be classified as gameplay."""
+    clf = ScreenClassifier(life_row=5)
+    frame = np.zeros((240, 256, 3), dtype=np.uint8)
+    nf = NESFrame(frame, 1.0, 1.0)
+    result = clf.classify(nf)
+    assert result not in ('overworld', 'dungeon', 'cave')

@@ -5,6 +5,7 @@ import cv2
 
 sys.path.insert(0, os.path.dirname(__file__))
 from detector.hud_reader import HudReader
+from detector.nes_frame import NESFrame, extract_nes_crop
 
 CROP = {"x": 383, "y": 24, "w": 871, "h": 670}
 STREAM_W, STREAM_H = 1280, 720
@@ -34,7 +35,10 @@ def main():
     proc = subprocess.run(cmd, capture_output=True, timeout=30)
     sf = np.frombuffer(proc.stdout, dtype=np.uint8).reshape((STREAM_H, STREAM_W, 3))
     x, y, w, h = CROP["x"], CROP["y"], CROP["w"], CROP["h"]
-    canonical = cv2.resize(sf[y:y+h, x:x+w], (256, 240), interpolation=cv2.INTER_NEAREST)
+    nes_region = extract_nes_crop(sf, x, y, w, h)
+    scale_x = w / 256.0
+    scale_y = h / 240.0
+    canonical = cv2.resize(nes_region, (256, 240), interpolation=cv2.INTER_NEAREST)
 
     # Save the canonical HUD area with annotations
     hud = canonical[0:64, :].copy()
@@ -56,8 +60,7 @@ def main():
     print("\n=== Stream source extraction ===")
     for dx in [0, 1, 2]:
         for dy in [6, 7]:
-            hud_r = HudReader(grid_offset=(dx, dy))
-            hud_r.set_stream_source(sf, x, y, w, h)
+            nf = NESFrame(nes_region, scale_x, scale_y, grid_dx=dx, grid_dy=dy)
             print(f"\n  dx={dx}, dy={dy}:")
 
             for name, row, nes_y_expected in [
@@ -66,9 +69,9 @@ def main():
             ]:
                 nes_x = 14 * 8 + dx
                 nes_y = row * 8 + dy
-                tile = hud_r._extract(canonical, nes_x, nes_y, 8, 8)
+                tile = nf.extract(nes_x, nes_y, 8, 8)
                 mean = float(np.mean(tile))
-                print(f"    {name}: _tile(14,{row}) -> nes({nes_x},{nes_y}) "
+                print(f"    {name}: tile(14,{row}) -> nes({nes_x},{nes_y}) "
                       f"mean={mean:.1f} "
                       f"pixel_sample={tile[4,4].tolist()}")
 
@@ -76,21 +79,17 @@ def main():
                 big_t = cv2.resize(tile, (64, 64), interpolation=cv2.INTER_NEAREST)
                 cv2.imwrite(f"{outdir}/{name}_dx{dx}dy{dy}.png", big_t)
 
-            hud_r.clear_stream_source()
-
     # Also extract key/bomb area directly at landmark positions
     print("\n=== Direct landmark extraction ===")
-    hud_r = HudReader(grid_offset=(1, 7))
-    hud_r.set_stream_source(sf, x, y, w, h)
+    nf = NESFrame(nes_region, scale_x, scale_y, grid_dx=1, grid_dy=7)
     for name, lm_y, lm_w in [("key", 38, 33), ("bmb", 46, 33)]:
         for nes_x_start in [87, 104, 112]:
-            region = hud_r._extract(canonical, nes_x_start, lm_y, 8, 8)
+            region = nf.extract(nes_x_start, lm_y, 8, 8)
             mean = float(np.mean(region))
             print(f"  {name} x={nes_x_start} y={lm_y}: mean={mean:.1f} "
                   f"sample={region[4,4].tolist()}")
             big_r = cv2.resize(region, (64, 64), interpolation=cv2.INTER_NEAREST)
             cv2.imwrite(f"{outdir}/direct_{name}_x{nes_x_start}.png", big_r)
-    hud_r.clear_stream_source()
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import cv2
 sys.path.insert(0, os.path.dirname(__file__))
 from detector.hud_reader import HudReader
 from detector.digit_reader import DigitReader
+from detector.nes_frame import NESFrame, extract_nes_crop
 
 CROP = {"x": 383, "y": 24, "w": 871, "h": 670}
 STREAM_W, STREAM_H = 1280, 720
@@ -24,14 +25,14 @@ VOD_URL = "https://www.twitch.tv/videos/2705396017"
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates", "digits")
 
 
-def debug_strip(hud, frame, digit_reader, lm, num_digits, name, ts, outdir):
+def debug_strip(nf, digit_reader, lm, num_digits, name, ts, outdir):
     """Extract and visualize a counter strip."""
     total_chars = max(num_digits + 1, round(lm['w'] / 8))
     norm_w = total_chars * 8
     center_x = lm['x'] + lm['w'] / 2
     start_x = int(round(center_x - norm_w / 2))
 
-    raw = hud._extract(frame, start_x, lm['y'], norm_w, 8)
+    raw = nf.extract(start_x, lm['y'], norm_w, 8)
     gray = cv2.cvtColor(raw, cv2.COLOR_BGR2GRAY)
 
     # Save strip (zoomed 8x)
@@ -85,8 +86,12 @@ def debug_strip(hud, frame, digit_reader, lm, num_digits, name, ts, outdir):
 
 def main():
     digit_reader = DigitReader(TEMPLATE_DIR)
-    hud = HudReader(grid_offset=(0, 0), landmarks=LANDMARKS)
-    print(f"Grid offset: dx={hud.grid_dx}, dy={hud.grid_dy}")
+    hud = HudReader(landmarks=LANDMARKS)
+
+    # Look up landmark dicts directly
+    _rupee_lm = next(l for l in LANDMARKS if l['label'] == 'Rupees')
+    _key_lm = next(l for l in LANDMARKS if l['label'] == 'Keys')
+    _bomb_lm = next(l for l in LANDMARKS if l['label'] == 'Bombs')
 
     proc = subprocess.run(
         ["streamlink", "--stream-url", VOD_URL, "best"],
@@ -118,20 +123,21 @@ def main():
         cv2.imwrite(f"{outdir}/t{ts}_hud.png", big_hud)
 
         print(f"\n=== t={ts}s (stream source) ===")
-        hud.set_stream_source(sf, x, y, w, h)
-        for name, lm, nd in [("rup", hud._rupee_lm, 3), ("key", hud._key_lm, 2), ("bmb", hud._bomb_lm, 2)]:
-            debug_strip(hud, canonical, digit_reader, lm, nd, name, ts, outdir)
+        nf = NESFrame(extract_nes_crop(sf, x, y, w, h),
+                      w / 256.0, h / 240.0)
+        for name, lm, nd in [("rup", _rupee_lm, 3), ("key", _key_lm, 2), ("bmb", _bomb_lm, 2)]:
+            debug_strip(nf, digit_reader, lm, nd, name, ts, outdir)
 
         # Also read with the actual methods
-        rup = hud.read_rupees(canonical, digit_reader)
-        key_count, master = hud.read_keys(canonical, digit_reader)
-        bmb = hud.read_bombs(canonical, digit_reader)
+        rup = hud.read_rupees(nf, digit_reader)
+        key_count, master = hud.read_keys(nf, digit_reader)
+        bmb = hud.read_bombs(nf, digit_reader)
         print(f"  RESULT: rup={rup}, key={key_count}, bmb={bmb}")
-        hud.clear_stream_source()
 
         print(f"\n=== t={ts}s (canonical only) ===")
-        for name, lm, nd in [("rup", hud._rupee_lm, 3), ("key", hud._key_lm, 2), ("bmb", hud._bomb_lm, 2)]:
-            debug_strip(hud, canonical, digit_reader, lm, nd, f"{name}_c", ts, outdir)
+        nf_canon = NESFrame(canonical, 1.0, 1.0)
+        for name, lm, nd in [("rup", _rupee_lm, 3), ("key", _key_lm, 2), ("bmb", _bomb_lm, 2)]:
+            debug_strip(nf_canon, digit_reader, lm, nd, f"{name}_c", ts, outdir)
 
 
 if __name__ == "__main__":

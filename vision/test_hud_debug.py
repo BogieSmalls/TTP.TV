@@ -6,6 +6,7 @@ import cv2
 sys.path.insert(0, os.path.dirname(__file__))
 from detector.hud_reader import HudReader
 from detector.digit_reader import DigitReader
+from detector.nes_frame import NESFrame, extract_nes_crop
 
 CROP = {"x": 383, "y": 24, "w": 871, "h": 670}
 STREAM_W, STREAM_H = 1280, 720
@@ -59,26 +60,25 @@ def main():
     best_score = -1
     best_offset = (0, 0)
 
+    hud = HudReader()
+
     for dy in range(8):
         for dx in range(8):
-            # Use standard NES positions (no landmarks, just grid offset)
-            hud = HudReader(grid_offset=(dx, dy))
+            # Use standard NES positions (no landmarks, just grid offset on NESFrame)
             results = {}
 
             for ts, sf in frames.items():
-                canonical = cv2.resize(sf[y:y+h, x:x+w], (256, 240),
-                                       interpolation=cv2.INTER_NEAREST)
-                hud.set_stream_source(sf, x, y, w, h)
-                rup = hud._read_counter_tiles(canonical, digit_reader,
+                nf = NESFrame(extract_nes_crop(sf, x, y, w, h),
+                              w / 256.0, h / 240.0, grid_dx=dx, grid_dy=dy)
+                rup = hud._read_counter_tiles(nf, digit_reader,
                     [12, 13, 14], 2)
-                key = hud._read_counter_tiles(canonical, digit_reader,
+                key = hud._read_counter_tiles(nf, digit_reader,
                     [13, 14], 3)
-                bmb = hud._read_counter_tiles(canonical, digit_reader,
+                bmb = hud._read_counter_tiles(nf, digit_reader,
                     [13, 14], 4)
                 # Dungeon level
-                lvl_tile = hud._tile(canonical, 8, 1)
+                lvl_tile = nf.tile(8, 1)
                 lvl = digit_reader.read_digit(lvl_tile)
-                hud.clear_stream_source()
                 if rup > 255:
                     rup = rup % 100
                 results[ts] = (rup, key, bmb, lvl)
@@ -109,18 +109,17 @@ def main():
 
     # Now test with the best offset at all timestamps
     print(f"\n--- Full test with dx={best_offset[0]}, dy={best_offset[1]} ---")
-    hud = HudReader(grid_offset=best_offset)
     for ts, sf in sorted(frames.items()):
-        canonical = cv2.resize(sf[y:y+h, x:x+w], (256, 240),
-                               interpolation=cv2.INTER_NEAREST)
-        hud.set_stream_source(sf, x, y, w, h)
-        rup = hud._read_counter_tiles(canonical, digit_reader, [12, 13, 14], 2)
-        key = hud._read_counter_tiles(canonical, digit_reader, [13, 14], 3)
-        bmb = hud._read_counter_tiles(canonical, digit_reader, [13, 14], 4)
-        lvl_tile = hud._tile(canonical, 8, 1)
+        nf = NESFrame(extract_nes_crop(sf, x, y, w, h),
+                      w / 256.0, h / 240.0,
+                      grid_dx=best_offset[0], grid_dy=best_offset[1])
+        rup = hud._read_counter_tiles(nf, digit_reader, [12, 13, 14], 2)
+        key = hud._read_counter_tiles(nf, digit_reader, [13, 14], 3)
+        bmb = hud._read_counter_tiles(nf, digit_reader, [13, 14], 4)
+        lvl_tile = nf.tile(8, 1)
         lvl = digit_reader.read_digit(lvl_tile)
         # Sword
-        sword_tile = hud._tile(canonical, 19, 3)
+        sword_tile = nf.tile(19, 3)
         sw_avg = np.mean(sword_tile, axis=(0, 1))
         sw_b = float(np.mean(sw_avg))
         sw = 3 if sw_avg[0] > sw_avg[2] + 20 else (2 if sw_b > 160 else (1 if sw_b > 15 else 0))
@@ -128,7 +127,6 @@ def main():
         if rup > 255:
             rup = rup % 100
         print(f"  t={ts}: Rup={rup} Key={key} Bmb={bmb} LVL={lvl} Sw={names[sw]}")
-        hud.clear_stream_source()
 
 
 if __name__ == "__main__":

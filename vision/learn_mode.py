@@ -34,6 +34,7 @@ import requests
 from detector.nes_state import NesStateDetector, GameState
 from detector.temporal_buffer import TemporalBuffer
 from detector.game_logic import GameLogicValidator
+from detector.nes_frame import NESFrame, extract_nes_crop
 from detector.auto_crop import (
     AutoCropDetector, CropResult, extract_sample_frames,
     calibrate_from_life_text, find_grid_offset,
@@ -350,7 +351,7 @@ def main():
 
     # ─── Step 2: Spawn ffmpeg pipeline ───
     frame_size = args.width * args.height * 3
-    nes_detector = NesStateDetector(args.templates, grid_offset=grid_offset)
+    nes_detector = NesStateDetector(args.templates)
 
     if args.temporal_buffer > 1:
         buffer = TemporalBuffer(nes_detector, buffer_size=args.temporal_buffer)
@@ -486,27 +487,19 @@ def main():
         frame = np.frombuffer(raw, dtype=np.uint8).reshape((args.height, args.width, 3))
 
         # Crop to NES game area (pad with black if crop extends outside frame boundaries)
-        fh, fw = frame.shape[:2]
-        sy1, sy2 = max(0, cy), min(fh, cy + ch)
-        sx1, sx2 = max(0, cx), min(fw, cx + cw)
-        nes_region = np.zeros((ch, cw, 3), dtype=np.uint8)
-        if sy2 > sy1 and sx2 > sx1:
-            nes_region[(sy1 - cy):(sy1 - cy) + (sy2 - sy1),
-                        (sx1 - cx):(sx1 - cx) + (sx2 - sx1)] = frame[sy1:sy2, sx1:sx2]
-        nes_canonical = cv2.resize(nes_region, (256, 240), interpolation=cv2.INTER_NEAREST)
+        nes_region = extract_nes_crop(frame, cx, cy, cw, ch)
+        scale_x = cw / 256.0
+        scale_y = ch / 240.0
+        dx, dy = grid_offset
+        nf = NESFrame(nes_region, scale_x, scale_y, grid_dx=dx, grid_dy=dy)
+        nes_canonical = nf.to_canonical()
 
-        # Feed native-resolution frame so HudReader extracts tiles at stream
-        # resolution instead of from the lossy 256×240 canonical downscale.
-        nes_detector.set_native_frame(frame, cx, cy, cw, ch)
-        try:
-            # Detect with optional temporal smoothing
-            if buffer:
-                raw_state, stable_state = buffer.get_raw_and_stable(nes_canonical)
-            else:
-                raw_state = nes_detector.detect(nes_canonical)
-                stable_state = raw_state
-        finally:
-            nes_detector.clear_native_frame()
+        # Detect with optional temporal smoothing
+        if buffer:
+            raw_state, stable_state = buffer.get_raw_and_stable(nf)
+        else:
+            raw_state = nes_detector.detect(nf)
+            stable_state = raw_state
 
         # Apply game logic validation
         validated = validator.validate(stable_state, frame_count)

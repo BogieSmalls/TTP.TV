@@ -8,6 +8,7 @@ import numpy as np
 
 from detector.item_reader import ItemReader
 from detector.hud_reader import HudReader
+from detector.nes_frame import NESFrame, extract_nes_crop
 
 # Bogie's crop profile
 CROP_X, CROP_Y, CROP_W, CROP_H = 541, -31, 1379, 1111
@@ -52,17 +53,18 @@ def main():
     print(f"Item templates loaded: {len(item_reader.templates)}")
     print(f"Template size: {item_reader._tmpl_w}x{item_reader._tmpl_h}")
 
-    hud = HudReader(grid_offset=(2, 0), landmarks=LANDMARKS)
+    hud = HudReader(landmarks=LANDMARKS)
 
     # --- Test with stream extraction (best quality) ---
-    hud.set_stream_source(stream, CROP_X, CROP_Y, CROP_W, CROP_H)
+    nf = NESFrame(extract_nes_crop(stream, CROP_X, CROP_Y, CROP_W, CROP_H),
+                  CROP_W / 256.0, CROP_H / 240.0, grid_dx=2, grid_dy=0)
 
-    y = hud.B_ITEM_Y + hud._row_shift * 8 + hud.grid_dy
-    x = hud.B_ITEM_X + hud.grid_dx
+    y = hud.B_ITEM_Y + nf.grid_dy
+    x = hud.B_ITEM_X + nf.grid_dx
     print(f"\nB-item extraction position: ({x}, {y})")
 
     # Extract the 16x24 region (same as read_b_item now uses)
-    region = hud._extract(canonical, x, y, 16, 24)
+    region = nf.extract(x, y, 16, 24)
     print(f"Region shape: {region.shape}, mean brightness: {np.mean(region):.1f}")
 
     # Show binary mask of the extracted region
@@ -88,14 +90,14 @@ def main():
 
     # Full pipeline test
     print("\n=== Full pipeline (read_b_item) ===")
-    result_full = hud.read_b_item(canonical, item_reader)
+    result_full = hud.read_b_item(nf, item_reader)
     print(f"  Stream + template: {result_full}")
 
-    hud.clear_stream_source()
-    result_canon = hud.read_b_item(canonical, item_reader)
+    nf_canon = NESFrame(canonical, 1.0, 1.0, grid_dx=2, grid_dy=0)
+    result_canon = hud.read_b_item(nf_canon, item_reader)
     print(f"  Canon + template:  {result_canon}")
 
-    result_heuristic = hud.read_b_item(canonical)
+    result_heuristic = hud.read_b_item(nf_canon)
     print(f"  Canon + heuristic: {result_heuristic}")
 
     # Save debug images

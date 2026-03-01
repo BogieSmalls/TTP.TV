@@ -58,6 +58,8 @@ _DUAL_FIELDS = frozenset({'b_item'})
 # the same new value before accepting a change.
 _STREAK_THRESHOLDS: dict[str, int] = {
     'gannon_nearby': 2,
+    'hearts_max': 2,
+    'b_item': 10,
 }
 
 
@@ -467,7 +469,8 @@ class GameLogicValidator:
             for fld, threshold in _STREAK_THRESHOLDS.items():
                 raw_value = d[fld]
                 prev_value = getattr(prev, fld)
-                if raw_value != prev_value:
+                # Skip streak for numeric fields where prev=0 means "no prior data"
+                if raw_value != prev_value and not (prev_value == 0 and isinstance(prev_value, int) and not isinstance(prev_value, bool)):
                     pending = self._field_streaks.get(fld)
                     if pending and pending[0] == raw_value:
                         if pending[1] + 1 >= threshold:
@@ -620,11 +623,16 @@ class GameLogicValidator:
 
         # ─── Validation rules ───
 
-        # Rule 1: Max hearts can only increase
+        # Rule 1: Max hearts can only increase, and by at most 1 at a time
+        # (Zelda gives one heart container at a time; jumps > 1 are detection errors)
         if d['hearts_max'] < prev.hearts_max and prev.hearts_max > 0:
             self._record_anomaly(frame_number, 'hearts_max',
                                  f'Max hearts decreased from {prev.hearts_max} to {d["hearts_max"]}')
             d['hearts_max'] = prev.hearts_max
+        elif d['hearts_max'] > prev.hearts_max + 1 and prev.hearts_max > 0:
+            self._record_anomaly(frame_number, 'hearts_max',
+                                 f'Max hearts jumped from {prev.hearts_max} to {d["hearts_max"]} (capped to +1)')
+            d['hearts_max'] = prev.hearts_max + 1
 
         # Rule 2: Hearts cannot exceed max
         if d['hearts_current'] > d['hearts_max']:

@@ -8,6 +8,7 @@ import numpy as np
 from detector.auto_crop import find_grid_alignment
 from detector.hud_reader import HudReader
 from detector.digit_reader import DigitReader
+from detector.nes_frame import NESFrame
 
 FRAMES_DIR = r"D:\Projects\Streaming\TTPRestream\data\extracted-frames\silly-rock-8631-v2"
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates")
@@ -26,10 +27,11 @@ def make_canonical(frame, cx, cy, cw, ch):
 
 def read_counters(canonical, dx, dy, life_row):
     dr = DigitReader(f"{TEMPLATE_DIR}/digits")
-    hud = HudReader(grid_offset=(dx, dy), life_row=life_row)
-    rupees = hud.read_rupees(canonical, dr)
-    keys_count, _ = hud.read_keys(canonical, dr)
-    bombs = hud.read_bombs(canonical, dr)
+    hud = HudReader(life_row=life_row)
+    nf = NESFrame(canonical, 1.0, 1.0, grid_dx=dx, grid_dy=dy)
+    rupees = hud.read_rupees(nf, dr)
+    keys_count, _ = hud.read_keys(nf, dr)
+    bombs = hud.read_bombs(nf, dr)
     return rupees, keys_count, bombs
 
 

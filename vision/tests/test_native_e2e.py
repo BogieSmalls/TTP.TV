@@ -35,18 +35,17 @@ import numpy as np
 import cv2
 import pytest
 from detector.nes_state import NesStateDetector
+from detector.nes_frame import NESFrame, extract_nes_crop
 
 FIXTURE_PNG = os.path.join(os.path.dirname(__file__), 'fixtures', 'bogie_t451.png')
 FIXTURE_BIN = os.path.join(os.path.dirname(__file__), 'fixtures', 'bogie_t451_raw.bin')
 FIXTURE_V2708 = os.path.join(os.path.dirname(__file__), 'fixtures', 'bogie_v2708_t1051.png')
 TEMPLATES = os.path.join(os.path.dirname(__file__), '..', 'templates')
 
-# Bogie's crop from data/report_064eb5b2.json (and all other Bogie VOD reports):
+# Bogie's crop from data/report_064eb5b2.json:
 # x=544, y=0, w=1376, h=1080 from a 1920x1080 source frame.
 CROP = (544, 0, 1376, 1080)
 
-# Grid offset and life_row from data/vision-diag-bogie.json:
-GRID_OFFSET = (2, 0)
 LIFE_ROW = 5
 
 
@@ -86,7 +85,7 @@ def _fixture_exists():
 def test_bogie_t451_native_detection():
     """Native-resolution detection on Bogie t=451 matches known ground truth.
 
-    Verifies the full pipeline with set_native_frame() using a real 1920x1080
+    Verifies the full pipeline with NESFrame using a real 1920x1080
     Twitch capture and Bogie's production crop (x=544, y=0, w=1376, h=1080).
     """
     frame = _load_fixture()
@@ -100,17 +99,16 @@ def test_bogie_t451_native_detection():
     assert frame.shape[1] >= cx + cw, \
         f'Frame width {frame.shape[1]} too small for crop x={cx} w={cw}'
 
-    nes_region = frame[cy:cy + ch, cx:cx + cw]
-    nes_canonical = cv2.resize(nes_region, (256, 240), interpolation=cv2.INTER_NEAREST)
+    nes_region = extract_nes_crop(frame, cx, cy, cw, ch)
+    scale_x = cw / 256.0
+    scale_y = ch / 240.0
+    nf = NESFrame(nes_region, scale_x, scale_y)
 
     det = NesStateDetector(
         os.path.abspath(TEMPLATES),
-        grid_offset=GRID_OFFSET,
         life_row=LIFE_ROW,
     )
-    det.set_native_frame(frame, cx, cy, cw, ch)
-    state = det.detect(nes_canonical)
-    det.clear_native_frame()
+    state = det.detect(nf)
 
     # Screen must be a gameplay screen (dungeon expected at t=451)
     assert state.screen_type in ('dungeon', 'overworld', 'cave'), \
@@ -164,17 +162,16 @@ def test_bogie_v2708_t1051_native_detection():
 
     cx, cy, cw, ch = CROP
 
-    nes_region = frame[cy:cy + ch, cx:cx + cw]
-    nes_canonical = cv2.resize(nes_region, (256, 240), interpolation=cv2.INTER_NEAREST)
+    nes_region = extract_nes_crop(frame, cx, cy, cw, ch)
+    scale_x = cw / 256.0
+    scale_y = ch / 240.0
+    nf = NESFrame(nes_region, scale_x, scale_y)
 
     det = NesStateDetector(
         os.path.abspath(TEMPLATES),
-        grid_offset=GRID_OFFSET,
         life_row=LIFE_ROW,
     )
-    det.set_native_frame(frame, cx, cy, cw, ch)
-    state = det.detect(nes_canonical)
-    det.clear_native_frame()
+    state = det.detect(nf)
 
     assert state.screen_type in ('dungeon', 'overworld', 'cave'), \
         f'Expected gameplay screen, got {state.screen_type!r}'

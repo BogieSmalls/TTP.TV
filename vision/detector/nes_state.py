@@ -1,7 +1,7 @@
 """Top-level NES game state aggregator.
 
 Orchestrates all sub-detectors to produce a complete game state
-from a single 256x240 NES frame.
+from an NESFrame (native-resolution NES crop).
 """
 
 from dataclasses import dataclass, field, asdict
@@ -9,6 +9,7 @@ from typing import Optional
 
 import numpy as np
 
+from .nes_frame import NESFrame
 from .auto_crop import find_grid_alignment
 from .screen_classifier import ScreenClassifier
 from .hud_reader import HudReader
@@ -61,22 +62,24 @@ class GameState:
 
 
 class NesStateDetector:
-    """Orchestrates sub-detectors to extract full game state from a NES frame.
+    """Orchestrates sub-detectors to extract full game state from an NESFrame.
 
     Args:
         template_dir: Path to the templates/ directory with reference sprites.
+        life_row: HUD LIFE text tile row (default 5).
+        landmarks: Optional landmark positions from crop profile.
     """
 
-    def __init__(self, template_dir: str = 'templates', grid_offset: tuple[int, int] = (1, 2),
+    def __init__(self, template_dir: str = 'templates',
                  life_row: int = 5, landmarks: list[dict] | None = None):
         self.calibrator = HudCalibrator()
-        self.screen_classifier = ScreenClassifier(grid_offset=grid_offset, life_row=life_row)
-        self.hud_reader = HudReader(grid_offset=grid_offset, life_row=life_row,
+        self.screen_classifier = ScreenClassifier(life_row=life_row)
+        self.hud_reader = HudReader(life_row=life_row,
                                      landmarks=landmarks, calibrator=self.calibrator)
         self.digit_reader = DigitReader(f'{template_dir}/digits')
         self.item_reader = ItemReader(f'{template_dir}/items')
         self.inventory_reader = InventoryReader()
-        self.triforce_reader = TriforceReader(grid_offset=grid_offset)
+        self.triforce_reader = TriforceReader()
         self.item_detector = ItemDetector(item_reader=self.item_reader)
         self.floor_item_detector = FloorItemDetector(
             item_reader=self.item_reader,
@@ -89,16 +92,7 @@ class NesStateDetector:
         self.player_items = PlayerItemTracker()
         self.race_items = RaceItemTracker()
 
-    def _set_grid_offset(self, dx: int, dy: int) -> None:
-        """Update grid offset on all sub-detectors that use tile positions."""
-        self.screen_classifier.grid_dx = dx
-        self.screen_classifier.grid_dy = dy
-        self.hud_reader.grid_dx = dx
-        self.hud_reader.grid_dy = dy
-        self.triforce_reader.grid_dx = dx
-        self.triforce_reader.grid_dy = dy
-
-    def _refine_grid(self, frame: np.ndarray, initial_dx: int, initial_dy: int) -> tuple[int, int]:
+    def _refine_grid(self, nf: NESFrame, initial_dx: int, initial_dy: int) -> tuple[int, int]:
         """Refine (dx, dy) using digit template matches across multiple HUD rows.
 
         find_grid_alignment uses LIFE text redness which can be ambiguous on
@@ -106,7 +100,7 @@ class NesStateDetector:
         templates are sharper discriminators of the correct offset.
 
         Quality metric: minimum of the per-row average digit score across
-        sampled HUD rows (rupees row 2, level row 1, keys row 4, bombs row 5).
+        sampled HUD rows (rupees row 2, level row 1, keys row 4).
         Using the minimum prevents a single high-scoring row (e.g. three rupee
         digits) from overriding dy when other rows disagree.
 
@@ -138,7 +132,7 @@ class NesStateDetector:
                         y = row * 8 + candidate_dy
                         if x + 8 > 256 or y + 8 > 240:
                             continue
-                        tile = frame[y:y + 8, x:x + 8]
+                        tile = nf.extract(x, y, 8, 8)
                         if float(np.mean(tile)) < 10:
                             continue
                         _, score = self.digit_reader.read_digit_with_score(tile)
@@ -156,11 +150,11 @@ class NesStateDetector:
                     best_dy = candidate_dy
         return best_dx, best_dy
 
-    def detect(self, frame: np.ndarray) -> GameState:
-        """Detect game state from a canonical 256x240 BGR NES frame.
+    def detect(self, nf: NESFrame) -> GameState:
+        """Detect game state from an NESFrame.
 
         Args:
-            frame: numpy array of shape (240, 256, 3) in BGR color space.
+            nf: NESFrame wrapping the native-resolution NES crop.
 
         Returns:
             GameState with all detected fields.
@@ -171,20 +165,22 @@ class NesStateDetector:
         # In production, landmarks from crop calibration provide the offset.
         # For standalone use (golden frames, one-off detection), auto-detect.
         if not self.hud_reader._has_landmark('-LIFE-'):
-            alignment = find_grid_alignment(frame)
+            canonical = nf.to_canonical()
+            alignment = find_grid_alignment(canonical)
             if alignment:
                 dx, dy, _ = alignment
-                dx, dy = self._refine_grid(frame, dx, dy)
-                self._set_grid_offset(dx, dy)
+                dx, dy = self._refine_grid(nf, dx, dy)
+                nf.grid_dx = dx
+                nf.grid_dy = dy
 
         # Classify screen type
-        state.screen_type = self.screen_classifier.classify(frame)
+        state.screen_type = self.screen_classifier.classify(nf)
 
         # Safety correction: if classified as non-gameplay but HUD is present,
         # reclassify. This catches edge cases the classifier might miss.
         if (state.screen_type not in ('overworld', 'dungeon', 'cave')
-                and self.hud_reader.is_hud_present(frame)):
-            game_area = frame[64:240, :, :]
+                and self.hud_reader.is_hud_present(nf)):
+            game_area = nf.game_area()
             avg_brightness = float(np.mean(game_area))
             if avg_brightness < 35:
                 state.screen_type = 'dungeon'
@@ -195,57 +191,51 @@ class NesStateDetector:
 
         # Read HUD elements (only when the Zelda HUD is actually present).
         if (state.screen_type in ('overworld', 'dungeon', 'cave')
-                and self.hud_reader.is_hud_present(frame)):
-            # NOTE: HudCalibrator is designed for native-resolution frames
-            # (set_native_frame path). On canonical 256x240 frames,
-            # _detect_life_text misidentifies life_y (picks up rupee/heart
-            # red pixels at y=18 instead of LIFE text at y=40), producing
-            # wrong scale factors. Calibration is skipped here; it runs
-            # when native frames are available via set_native_frame().
+                and self.hud_reader.is_hud_present(nf)):
 
-            # Read dungeon level first — it can correct screen_type for bright
-            # dungeons that the brightness-based classifier mistakes for overworld
-            state.dungeon_level = self.hud_reader.read_dungeon_level(
-                frame, self.digit_reader)
-            if state.dungeon_level > 0 and state.screen_type != 'dungeon':
+            # Read dungeon level — can correct screen_type for bright dungeons.
+            raw_level = self.hud_reader.read_dungeon_level(
+                nf, self.digit_reader)
+            if raw_level > 0:
+                state.dungeon_level = raw_level
                 state.screen_type = 'dungeon'
 
-            hearts = self.hud_reader.read_hearts(frame)
+            hearts = self.hud_reader.read_hearts(nf)
             state.hearts_current = hearts[0]
             state.hearts_max = hearts[1]
             state.has_half_heart = hearts[2]
 
-            state.rupees = self.hud_reader.read_rupees(frame, self.digit_reader)
-            keys_count, has_master_key = self.hud_reader.read_keys(frame, self.digit_reader)
+            state.rupees = self.hud_reader.read_rupees(nf, self.digit_reader)
+            keys_count, has_master_key = self.hud_reader.read_keys(nf, self.digit_reader)
             state.keys = keys_count
             state.has_master_key = has_master_key
-            state.bombs = self.hud_reader.read_bombs(frame, self.digit_reader)
+            state.bombs = self.hud_reader.read_bombs(nf, self.digit_reader)
 
             # Sword and B-item from HUD (visible during gameplay)
-            state.sword_level = self.hud_reader.read_sword(frame)
-            state.b_item = self.hud_reader.read_b_item(frame, self.item_reader)
+            state.sword_level = self.hud_reader.read_sword(nf)
+            state.b_item = self.hud_reader.read_b_item(nf, self.item_reader)
 
             # Update player item tracking
             self.player_items.update_from_b_item(state.b_item)
             self.player_items.update_sword_level(state.sword_level)
 
             # LIFE/ROAR detection (Gannon proximity)
-            state.gannon_nearby = self.hud_reader.read_life_roar(frame)
+            state.gannon_nearby = self.hud_reader.read_life_roar(nf)
 
             # Fallback: sprite-based Ganon detection when ROAR is unreliable
             if not state.gannon_nearby:
                 state.gannon_nearby = self.ganon_detector.detect(
-                    frame, state.screen_type, state.dungeon_level)
+                    nf, state.screen_type, state.dungeon_level)
 
-            # Minimap position (proven working on canonical frames)
+            # Minimap position (via HudReader — works at native resolution)
             is_dungeon = state.screen_type == 'dungeon'
-            state.map_position = self.hud_reader.read_minimap_position(frame, is_dungeon)
+            state.map_position = self.hud_reader.read_minimap_position(nf, is_dungeon)
 
             # MinimapReader provides extra fields (dungeon map, triforce/zelda
-            # room dots) but its grid derivation depends on calibrator anchors.
-            # Only use it when calibrator is locked (native-resolution path).
+            # room dots) but works on canonical coordinates.
             if self.calibrator.result.locked:
-                minimap_result = self.minimap.read(frame, state.screen_type, state.dungeon_level)
+                canonical = nf.to_canonical()
+                minimap_result = self.minimap.read(canonical, state.screen_type, state.dungeon_level)
                 state.dungeon_map_rooms = minimap_result.dungeon_map_rooms
                 state.triforce_room = minimap_result.triforce_room
                 state.zelda_room = minimap_result.zelda_room
@@ -253,14 +243,14 @@ class NesStateDetector:
                 state.tile_match_score = minimap_result.tile_match_score
 
             # Item detection in game area (triforce pieces, etc.)
-            items = self.item_detector.detect_items(frame, state.screen_type)
+            items = self.item_detector.detect_items(nf, state.screen_type)
             if items:
                 best = items[0]
                 state.detected_item = best.item_type
                 state.detected_item_y = best.y
 
             # Floor item detection (dungeon/overworld only)
-            floor_items = self.floor_item_detector.detect(frame, state.screen_type)
+            floor_items = self.floor_item_detector.detect(nf, state.screen_type)
             state.floor_items = [
                 {'name': fi.name, 'x': fi.x, 'y': fi.y, 'score': fi.score}
                 for fi in floor_items
@@ -268,59 +258,8 @@ class NesStateDetector:
 
         # Subscreen: read inventory and triforce
         if state.screen_type == 'subscreen':
-            state.items = self.inventory_reader.read_items(frame)
-            state.triforce = self.triforce_reader.read_triforce(frame)
-            state.b_item = self.inventory_reader.read_b_item(frame)
-            # Note: sword_level is NOT read from the inventory reader — its
-            # SWORD_REGION (24, 152) misreads dungeon subscreens (hits COMPASS
-            # area).  The HUD reader's sword detection is authoritative.
+            state.items = self.inventory_reader.read_items(nf)
+            state.triforce = self.triforce_reader.read_triforce(nf)
+            state.b_item = self.inventory_reader.read_b_item(nf)
 
         return state
-
-    def set_native_frame(self, stream_frame: np.ndarray,
-                         crop_x: int, crop_y: int,
-                         crop_w: int, crop_h: int) -> None:
-        """Provide native-resolution frame data to all sub-detectors.
-
-        Call this before detect() on every frame. Enables pixel reads at stream
-        resolution (e.g. 960x720) instead of the downscaled 256x240 canonical,
-        dramatically improving accuracy by preserving more signal per tile.
-
-        Args:
-            stream_frame: Full raw stream frame (H x W x 3 BGR).
-            crop_x, crop_y: Top-left of the NES game region in stream pixels.
-            crop_w, crop_h: Size of the NES game region in stream pixels.
-        """
-        scale_x = crop_w / 256.0
-        scale_y = crop_h / 240.0
-
-        # HudReader uses the full stream frame (handles negative crop_y padding)
-        self.hud_reader.set_stream_source(stream_frame, crop_x, crop_y, crop_w, crop_h)
-
-        # Other detectors use the pre-cropped region
-        fh, fw = stream_frame.shape[:2]
-        sy1, sy2 = max(0, crop_y), min(fh, crop_y + crop_h)
-        sx1, sx2 = max(0, crop_x), min(fw, crop_x + crop_w)
-        if sy2 > sy1 and sx2 > sx1:
-            nes_region = stream_frame[sy1:sy2, sx1:sx2].copy()
-            # Pad if crop extends outside stream frame (e.g. negative crop_y)
-            if nes_region.shape[:2] != (crop_h, crop_w):
-                padded = np.zeros((crop_h, crop_w, 3), dtype=np.uint8)
-                dy_off = sy1 - crop_y
-                dx_off = sx1 - crop_x
-                padded[dy_off:dy_off + nes_region.shape[0],
-                       dx_off:dx_off + nes_region.shape[1]] = nes_region
-                nes_region = padded
-        else:
-            nes_region = np.zeros((crop_h, crop_w, 3), dtype=np.uint8)
-
-        self.screen_classifier.set_native_crop(nes_region, scale_x, scale_y)
-        self.triforce_reader.set_native_crop(nes_region, scale_x, scale_y)
-        self.inventory_reader.set_native_crop(nes_region, scale_x, scale_y)
-
-    def clear_native_frame(self) -> None:
-        """Release all native frame references. Call after detect() on every frame."""
-        self.hud_reader.clear_stream_source()
-        self.screen_classifier.clear_native_crop()
-        self.triforce_reader.clear_native_crop()
-        self.inventory_reader.clear_native_crop()

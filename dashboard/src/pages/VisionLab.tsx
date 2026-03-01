@@ -391,7 +391,7 @@ export default function VisionLab() {
                       className="text-xs px-2 py-0.5 rounded font-medium"
                       style={{ background: sbadge.bg, color: sbadge.color }}
                     >
-                      {s.screen_type === 'dungeon' ? `DUNGEON-${s.dungeon_level}` : s.screen_type.toUpperCase()}
+                      {s.screen_type === 'dungeon' ? (s.dungeon_level > 0 ? `DUNGEON-${s.dungeon_level}` : 'DUNGEON') : s.screen_type.toUpperCase()}
                     </span>
                     <button
                       onClick={() => resetRacer(s.racerId)}
@@ -434,7 +434,7 @@ export default function VisionLab() {
 
                 {/* HUD Values */}
                 <div className="grid grid-cols-4 gap-2 text-center">
-                  <HudVal label="Hearts" value={`${s.hearts_current}/${s.hearts_max}${s.has_half_heart ? '½' : ''}`} />
+                  <HudVal label="Hearts" value={`${s.hearts_current}${s.has_half_heart ? '½' : ''}/${s.hearts_max}`} />
                   <HudVal label="Rupees" value={s.rupees} />
                   <HudVal label="Keys" value={s.keys} />
                   <HudVal label="Bombs" value={s.bombs} />

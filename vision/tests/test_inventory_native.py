@@ -1,7 +1,8 @@
-"""Tests for native-resolution support in InventoryReader SWAP detection."""
+"""Tests for InventoryReader SWAP detection with NESFrame."""
 import numpy as np
 import pytest
 from detector.inventory_reader import InventoryReader
+from detector.nes_frame import NESFrame
 
 
 def _make_swap_frame(has_swap=True, scale_x=1.0, scale_y=1.0):
@@ -22,42 +23,28 @@ def _make_swap_frame(has_swap=True, scale_x=1.0, scale_y=1.0):
 def test_swap_detected_at_canonical():
     reader = InventoryReader()
     frame = _make_swap_frame(has_swap=True)
-    assert reader._is_z1r_swap(frame) is True
+    nf = NESFrame(frame, 1.0, 1.0)
+    assert reader._is_z1r_swap(nf) is True
 
 
 def test_no_swap_at_canonical():
     reader = InventoryReader()
     frame = _make_swap_frame(has_swap=False)
-    assert reader._is_z1r_swap(frame) is False
+    nf = NESFrame(frame, 1.0, 1.0)
+    assert reader._is_z1r_swap(nf) is False
 
 
 def test_swap_detected_at_native_scale():
     reader = InventoryReader()
     scale_x, scale_y = 960 / 256, 720 / 240
     frame = _make_swap_frame(has_swap=True, scale_x=scale_x, scale_y=scale_y)
-    reader.set_native_crop(frame, scale_x, scale_y)
-    result = reader._is_z1r_swap(frame)
-    reader.clear_native_crop()
-    assert result is True
+    nf = NESFrame(frame, scale_x, scale_y)
+    assert reader._is_z1r_swap(nf) is True
 
 
 def test_no_swap_at_native_scale():
     reader = InventoryReader()
     scale_x, scale_y = 960 / 256, 720 / 240
     frame = _make_swap_frame(has_swap=False, scale_x=scale_x, scale_y=scale_y)
-    reader.set_native_crop(frame, scale_x, scale_y)
-    result = reader._is_z1r_swap(frame)
-    reader.clear_native_crop()
-    assert result is False
-
-
-def test_clear_native_crop_restores_canonical():
-    reader = InventoryReader()
-    scale_x, scale_y = 960 / 256, 720 / 240
-    native_frame = _make_swap_frame(has_swap=True, scale_x=scale_x, scale_y=scale_y)
-    canonical_frame = _make_swap_frame(has_swap=True)
-
-    reader.set_native_crop(native_frame, scale_x, scale_y)
-    reader.clear_native_crop()
-    # After clear, canonical frame should still work correctly
-    assert reader._is_z1r_swap(canonical_frame) is True
+    nf = NESFrame(frame, scale_x, scale_y)
+    assert reader._is_z1r_swap(nf) is False

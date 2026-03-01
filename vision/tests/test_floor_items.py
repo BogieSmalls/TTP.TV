@@ -24,6 +24,12 @@ from detector.floor_item_detector import FloorItemDetector, FloorItem, _nms
 from detector.item_reader import ItemReader
 from detector.game_logic import FloorItemTracker, GameLogicValidator
 from detector.nes_state import GameState
+from detector.nes_frame import NESFrame
+
+
+def _nf(frame):
+    """Wrap a 256x240 canonical frame as NESFrame at 1:1 scale."""
+    return NESFrame(frame, 1.0, 1.0)
 
 # --- Paths ---
 TEMPLATE_DIR = str(VISION_DIR / 'templates' / 'items')
@@ -121,7 +127,7 @@ class TestFloorItemDetection:
         """A single composited item should be found at the correct position."""
         tmpl = item_reader.templates['heart_container']
         frame = composite_item(dungeon_frame, tmpl, 120, 80)
-        items = detector.detect(frame, 'dungeon')
+        items = detector.detect(_nf(frame), 'dungeon')
         matched = [i for i in items if abs(i.x - 120) <= 4 and abs(i.y - 80) <= 4]
         assert len(matched) >= 1
         assert matched[0].score >= 0.85
@@ -135,7 +141,7 @@ class TestFloorItemDetection:
             tmpl = item_reader.templates[name]
             frame = composite_item(frame, tmpl, x, y)
 
-        items = detector.detect(frame, 'dungeon')
+        items = detector.detect(_nf(frame), 'dungeon')
         for x, y in positions:
             matched = [i for i in items if abs(i.x - x) <= 6 and abs(i.y - y) <= 6]
             assert len(matched) >= 1, f"Item at ({x},{y}) not detected"
@@ -146,7 +152,7 @@ class TestFloorItemDetection:
         total = 0
         for name, tmpl in item_reader.templates.items():
             frame = composite_item(dungeon_frame, tmpl, 100, 80)
-            items = detector.detect(frame, 'dungeon')
+            items = detector.detect(_nf(frame), 'dungeon')
             # Reset frame diff state
             detector._prev_game_area = None
             matched = [i for i in items if abs(i.x - 100) <= 6 and abs(i.y - 80) <= 6]
@@ -161,7 +167,7 @@ class TestFloorItemDetection:
         """Synthetic items should score very high (near 1.0)."""
         tmpl = item_reader.templates['blue_candle']
         frame = composite_item(dungeon_frame, tmpl, 100, 80)
-        items = detector.detect(frame, 'dungeon')
+        items = detector.detect(_nf(frame), 'dungeon')
         matched = [i for i in items if abs(i.x - 100) <= 4 and abs(i.y - 80) <= 4]
         assert len(matched) >= 1
         assert matched[0].score >= 0.95, f"Score {matched[0].score:.3f} < 0.95"
@@ -182,7 +188,7 @@ class TestEnemyDropDetection:
             tmpl = detector._tmpl_f32[name].astype(np.uint8)
             frame = composite_item(dungeon_frame, tmpl, 100, 80)
             detector._prev_game_area = None  # reset frame diff
-            items = detector.detect(frame, 'dungeon')
+            items = detector.detect(_nf(frame), 'dungeon')
             matched = [i for i in items if i.name == name
                        and abs(i.x - 100) <= 6 and abs(i.y - 80) <= 6]
             assert len(matched) >= 1, f"Drop template '{name}' not detected"
@@ -200,7 +206,7 @@ class TestEnemyDropDetection:
             tmpl = detector._tmpl_f32[name].astype(np.uint8)
             frame = composite_item(dungeon_frame, tmpl, 100, 80)
             detector._prev_game_area = None
-            items = detector.detect(frame, 'dungeon')
+            items = detector.detect(_nf(frame), 'dungeon')
             matched = [i for i in items if i.name == name
                        and abs(i.x - 100) <= 6 and abs(i.y - 80) <= 6]
             assert len(matched) >= 1, f"Drop '{name}' not detected at (100,80)"
@@ -226,7 +232,7 @@ class TestFloorItemFalsePositives:
         total_fp = 0
         for fname, frame in dungeon_frames:
             detector._prev_game_area = None  # reset diff guard
-            items = detector.detect(frame, 'dungeon')
+            items = detector.detect(_nf(frame), 'dungeon')
             total_fp += len(items)
         avg_fp = total_fp / len(dungeon_frames)
         assert avg_fp <= 5.0, f"Average FP {avg_fp:.1f} > 5 per frame"
@@ -234,7 +240,7 @@ class TestFloorItemFalsePositives:
     def test_no_detection_on_non_gameplay(self, detector, dungeon_frame):
         """Non-gameplay screen types should return empty list."""
         for st in ('subscreen', 'title', 'death', 'cave', 'transition'):
-            items = detector.detect(dungeon_frame, st)
+            items = detector.detect(_nf(dungeon_frame), st)
             assert items == [], f"Detected items on screen_type={st}"
 
 
@@ -293,8 +299,8 @@ class TestFrameDiffGuard:
         """Second call with identical frame returns cached result."""
         tmpl = item_reader.templates['key']
         frame = composite_item(dungeon_frame, tmpl, 100, 80)
-        result1 = detector.detect(frame, 'dungeon')
-        result2 = detector.detect(frame, 'dungeon')
+        result1 = detector.detect(_nf(frame), 'dungeon')
+        result2 = detector.detect(_nf(frame), 'dungeon')
         assert result1 == result2
 
     def test_changed_frame_rescans(self, detector, dungeon_frame, item_reader):
@@ -302,12 +308,12 @@ class TestFrameDiffGuard:
         tmpl_key = item_reader.templates['key']
 
         frame1 = composite_item(dungeon_frame, tmpl_key, 100, 80)
-        result1 = detector.detect(frame1, 'dungeon')
+        result1 = detector.detect(_nf(frame1), 'dungeon')
 
         # Create a significantly different frame (flood a region with white)
         frame2 = dungeon_frame.copy()
         frame2[64:180, 30:220] = 200  # large bright region
-        result2 = detector.detect(frame2, 'dungeon')
+        result2 = detector.detect(_nf(frame2), 'dungeon')
 
         # frame2 has no items composited — high-scoring detections from
         # frame1 (key at 100,80) should NOT be in result2
@@ -320,8 +326,8 @@ class TestFrameDiffGuard:
 
     def test_screen_type_change_resets_diff(self, detector, dungeon_frame):
         """Changing to non-gameplay resets the diff guard."""
-        detector.detect(dungeon_frame, 'dungeon')
-        detector.detect(dungeon_frame, 'subscreen')  # resets
+        detector.detect(_nf(dungeon_frame), 'dungeon')
+        detector.detect(_nf(dungeon_frame), 'subscreen')  # resets
         # After reset, next dungeon frame should trigger full scan
         assert detector._prev_game_area is None
 
@@ -337,7 +343,7 @@ class TestShapeTwinDisambiguation:
         """Blue candle should be identified as blue, not red."""
         tmpl = item_reader.templates['blue_candle']
         frame = composite_item(dungeon_frame, tmpl, 100, 80)
-        items = detector.detect(frame, 'dungeon')
+        items = detector.detect(_nf(frame), 'dungeon')
         matched = [i for i in items if abs(i.x - 100) <= 4 and abs(i.y - 80) <= 4]
         assert len(matched) >= 1
         assert matched[0].name == 'blue_candle'
@@ -347,7 +353,7 @@ class TestShapeTwinDisambiguation:
         tmpl = item_reader.templates['red_candle']
         frame = composite_item(dungeon_frame, tmpl, 100, 80)
         detector._prev_game_area = None
-        items = detector.detect(frame, 'dungeon')
+        items = detector.detect(_nf(frame), 'dungeon')
         matched = [i for i in items if abs(i.x - 100) <= 4 and abs(i.y - 80) <= 4]
         assert len(matched) >= 1
         assert matched[0].name == 'red_candle'
@@ -365,7 +371,7 @@ class TestWallMargin:
         tmpl = item_reader.templates['key']
         # Place at x=4 (within 16px margin)
         frame = composite_item(dungeon_frame, tmpl, 4, 80)
-        items = detector.detect(frame, 'dungeon')
+        items = detector.detect(_nf(frame), 'dungeon')
         near_wall = [i for i in items if i.x < 16]
         assert len(near_wall) == 0
 
@@ -373,7 +379,7 @@ class TestWallMargin:
         """Items placed inside the margin zone should be detected."""
         tmpl = item_reader.templates['key']
         frame = composite_item(dungeon_frame, tmpl, 100, 80)
-        items = detector.detect(frame, 'dungeon')
+        items = detector.detect(_nf(frame), 'dungeon')
         matched = [i for i in items if abs(i.x - 100) <= 4 and abs(i.y - 80) <= 4]
         assert len(matched) >= 1
 

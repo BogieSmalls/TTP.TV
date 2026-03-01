@@ -2,6 +2,7 @@
 import cv2
 import numpy as np
 from detector.hud_reader import HudReader
+from detector.nes_frame import NESFrame, extract_nes_crop
 
 CROP_X, CROP_Y, CROP_W, CROP_H = 541, -31, 1379, 1111
 LANDMARKS = [
@@ -33,14 +34,15 @@ nes_region[dy_off:dy_off + (sy2 - sy1),
            dx_off:dx_off + (sx2 - sx1)] = stream[sy1:sy2, sx1:sx2]
 canonical = cv2.resize(nes_region, (256, 240), interpolation=cv2.INTER_NEAREST)
 
-hud = HudReader(grid_offset=(2, 0), landmarks=LANDMARKS)
-hud.set_stream_source(stream, CROP_X, CROP_Y, CROP_W, CROP_H)
+hud = HudReader(landmarks=LANDMARKS)
+nf = NESFrame(extract_nes_crop(stream, CROP_X, CROP_Y, CROP_W, CROP_H),
+              CROP_W / 256.0, CROP_H / 240.0, grid_dx=2, grid_dy=0)
 
 # Extract a wider area around B-item to see HUD layout
 print("=== B-item area pixel scan (stream extraction) ===")
 print("Extracting 24x24 area centered on B landmark")
 bx, by = 124, 24  # B landmark position
-wide = hud._extract(canonical, bx - 4, by - 4, 24, 24)
+wide = nf.extract(bx - 4, by - 4, 24, 24)
 
 print("\nGrayscale pixel values (24x24):")
 gray = cv2.cvtColor(wide, cv2.COLOR_BGR2GRAY)
@@ -64,7 +66,7 @@ for row in range(24):
 print("\n=== Testing different extraction offsets ===")
 for dx_off in range(0, 10, 2):
     for dy_off in [0, 2, 4]:
-        inner = hud._extract(canonical, bx + dx_off, by + dy_off, 8, 16)
+        inner = nf.extract(bx + dx_off, by + dy_off, 8, 16)
         brightness = float(np.mean(inner))
         # Count non-black pixels
         gray_inner = cv2.cvtColor(inner, cv2.COLOR_BGR2GRAY)
@@ -73,8 +75,8 @@ for dx_off in range(0, 10, 2):
               f"nonblack={nonblack}/128")
 
 # Save the 16x16 B-item at landmark pos and at offset +4
-tile_at_lm = hud._extract(canonical, bx, by, 16, 16)
-tile_inner = hud._extract(canonical, bx + 4, by, 8, 16)
+tile_at_lm = nf.extract(bx, by, 16, 16)
+tile_inner = nf.extract(bx + 4, by, 8, 16)
 cv2.imwrite('debug_bitem_at_landmark.png',
             cv2.resize(tile_at_lm, (128, 128), interpolation=cv2.INTER_NEAREST))
 cv2.imwrite('debug_bitem_inner_8x16.png',
@@ -85,4 +87,3 @@ hud_region = canonical[0:64, 100:170]
 cv2.imwrite('debug_hud_bitem_area.png',
             cv2.resize(hud_region, (560, 512), interpolation=cv2.INTER_NEAREST))
 
-hud.clear_stream_source()

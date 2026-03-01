@@ -4,6 +4,7 @@ PlayerItemTracker and RaceItemTracker, plus new GameState fields."""
 
 import numpy as np
 from detector.nes_state import NesStateDetector, GameState
+from detector.nes_frame import NESFrame
 
 
 def test_gamestate_has_new_fields():
@@ -35,7 +36,8 @@ def test_nes_state_detector_constructs_with_calibrator():
 def test_detect_returns_gamestate_with_new_fields():
     det = NesStateDetector()
     frame = np.zeros((240, 256, 3), dtype=np.uint8)
-    state = det.detect(frame)
+    nf = NESFrame(frame, 1.0, 1.0)
+    state = det.detect(nf)
     assert isinstance(state, GameState)
     assert state.dungeon_map_rooms is None or isinstance(state.dungeon_map_rooms, int)
 

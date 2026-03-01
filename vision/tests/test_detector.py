@@ -2,6 +2,7 @@
 from pathlib import Path
 
 import pytest
+from detector.nes_frame import NESFrame
 
 GOLDEN_FRAMES_DIR = Path(__file__).parent / "golden_frames"
 GAMEPLAY_TYPES = {"overworld", "dungeon", "cave"}
@@ -30,7 +31,7 @@ def test_screen_classification(detector, golden_frames, frame_name):
     """Screen type matches baseline for every golden frame."""
     gf = _get_frame(golden_frames, frame_name)
     assert gf is not None, f"Frame {frame_name!r} not in golden_frames fixture"
-    state = detector.detect(gf["frame"])
+    state = detector.detect(NESFrame(gf["frame"], 1.0, 1.0))
     expected_type = gf["expected"]["screen_type"]
     assert state.screen_type == expected_type, (
         f"{frame_name}: expected {expected_type!r}, got {state.screen_type!r}"
@@ -46,7 +47,7 @@ def test_hud_present_gameplay(detector, golden_frames):
     gameplay = [gf for gf in golden_frames if gf["expected"]["screen_type"] in GAMEPLAY_TYPES]
     assert gameplay, "No gameplay golden frames found"
     for gf in gameplay:
-        state = detector.detect(gf["frame"])
+        state = detector.detect(NESFrame(gf["frame"], 1.0, 1.0))
         assert state.screen_type in GAMEPLAY_TYPES, (
             f"{gf['name']}: expected gameplay screen_type, got {state.screen_type!r}"
         )
@@ -57,7 +58,7 @@ def test_hud_present_non_gameplay(detector, golden_frames):
     non_gameplay = [gf for gf in golden_frames if gf["expected"]["screen_type"] not in GAMEPLAY_TYPES]
     assert non_gameplay, "No non-gameplay golden frames found"
     for gf in non_gameplay:
-        state = detector.detect(gf["frame"])
+        state = detector.detect(NESFrame(gf["frame"], 1.0, 1.0))
         assert state.screen_type not in GAMEPLAY_TYPES, (
             f"{gf['name']}: expected non-gameplay screen_type, got {state.screen_type!r}"
         )
@@ -75,7 +76,7 @@ def test_hearts_reading(detector, golden_frames, frame_name):
     expected = gf["expected"]
     if "hearts_current" not in expected:
         pytest.skip(f"{frame_name}: no hearts expected (non-gameplay frame)")
-    state = detector.detect(gf["frame"])
+    state = detector.detect(NESFrame(gf["frame"], 1.0, 1.0))
     exp_cur = expected["hearts_current"]
     exp_max = expected["hearts_max"]
     assert abs(state.hearts_current - exp_cur) <= 1, (
@@ -98,7 +99,7 @@ def test_keys_bombs_reading(detector, golden_frames, frame_name):
     expected = gf["expected"]
     if "keys" not in expected and "bombs" not in expected:
         pytest.skip(f"{frame_name}: no keys/bombs expected")
-    state = detector.detect(gf["frame"])
+    state = detector.detect(NESFrame(gf["frame"], 1.0, 1.0))
     if "keys" in expected:
         assert state.keys == expected["keys"], (
             f"{frame_name}: keys expected {expected['keys']}, got {state.keys}"

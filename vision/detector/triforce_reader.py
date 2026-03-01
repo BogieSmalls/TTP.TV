@@ -6,11 +6,13 @@ for gold/orange pixel clusters in the triforce triangle display area.
 The subscreen scroll position varies, so we first locate the "-LIFE-"
 text as an anchor and compute the triforce region relative to it.
 
-All coordinates are for the canonical 256x240 NES frame.
+All coordinates are in NES 256x240 space, mapped to native resolution
+via the NESFrame wrapper.
 """
 
 import numpy as np
 
+from .nes_frame import NESFrame
 
 # Minimum number of gold pixels to consider a cluster as a collected piece
 MIN_GOLD_PIXELS = 15
@@ -53,49 +55,24 @@ class TriforceReader:
     4. Count total collected pieces
     """
 
-    def __init__(self, grid_offset: tuple[int, int] = (1, 2)):
-        self.grid_dx, self.grid_dy = grid_offset
-        self._native_crop: np.ndarray | None = None
-        self._scale_x: float = 1.0
-        self._scale_y: float = 1.0
-
-    def set_native_crop(self, crop_frame: np.ndarray,
-                        scale_x: float, scale_y: float) -> None:
-        """Provide the native-resolution crop for this frame."""
-        self._native_crop = crop_frame
-        self._scale_x = scale_x
-        self._scale_y = scale_y
-
-    def clear_native_crop(self) -> None:
-        self._native_crop = None
-
-    def _af(self, canonical: np.ndarray) -> np.ndarray:
-        return self._native_crop if self._native_crop is not None else canonical
-
-    def _s(self, v: float, axis: str) -> int:
-        """Scale a NES pixel value along 'x' or 'y' axis."""
-        if self._native_crop is None:
-            return int(v)
-        return round(v * (self._scale_x if axis == 'x' else self._scale_y))
-
-    def read_triforce(self, frame: np.ndarray) -> list[bool]:
+    def read_triforce(self, nf: NESFrame) -> list[bool]:
         """Detect which triforce pieces are collected.
 
         Args:
-            frame: 256x240 BGR NES frame (must be on subscreen).
+            nf: NESFrame wrapping the native-resolution NES crop.
 
         Returns:
             List of 8 booleans, one per dungeon (1-8).
         """
-        src = self._af(frame)
-        life_y = self._find_life_y(frame)
+        src = nf.crop
+        life_y = self._find_life_y(nf)
         if life_y is None:
             return [False] * 8
 
-        y_start = max(0, life_y - self._s(TRIFORCE_Y_OFFSET_MAX, 'y'))
-        y_end   = max(0, life_y - self._s(TRIFORCE_Y_OFFSET_MIN, 'y'))
-        x_start = self._s(TRIFORCE_X_START, 'x')
-        x_end   = self._s(TRIFORCE_X_END, 'x')
+        y_start = max(0, life_y - nf.scale_coord(TRIFORCE_Y_OFFSET_MAX, 'y'))
+        y_end   = max(0, life_y - nf.scale_coord(TRIFORCE_Y_OFFSET_MIN, 'y'))
+        x_start = nf.scale_coord(TRIFORCE_X_START, 'x')
+        x_end   = nf.scale_coord(TRIFORCE_X_END, 'x')
 
         if y_end <= y_start or x_end <= x_start:
             return [False] * 8
@@ -113,8 +90,8 @@ class TriforceReader:
         abs_xs = gold_xs + x_start   # absolute X in src frame
 
         sorted_xs = np.sort(abs_xs)
-        gap_threshold = max(8, self._s(8, 'x'))
-        min_cluster_pixels = max(3, round(3 * max(self._scale_x, self._scale_y)))
+        gap_threshold = max(8, nf.scale_coord(8, 'x'))
+        min_cluster_pixels = max(3, round(3 * max(nf.scale_x, nf.scale_y)))
 
         clusters = []
         cluster_start = int(sorted_xs[0])
@@ -143,18 +120,18 @@ class TriforceReader:
             result[i] = True
         return result
 
-    def _find_life_y(self, frame: np.ndarray) -> int | None:
+    def _find_life_y(self, nf: NESFrame) -> int | None:
         """Find the Y position of the -LIFE- text on the subscreen.
 
         Scans y=100..232 for red text at the standard LIFE column position.
         Returns the Y where strong red was first found, or None.
         """
-        src = self._af(frame)
-        x  = self._s(22 * 8 + self.grid_dx, 'x')
-        tw = max(1, self._s(8, 'x'))
-        th = max(1, self._s(8, 'y'))
-        y_start = self._s(100, 'y')
-        y_end   = min(self._s(232, 'y'), src.shape[0] - th)
+        src = nf.crop
+        x  = nf.scale_coord(22 * 8 + nf.grid_dx, 'x')
+        tw = max(1, nf.scale_coord(8, 'x'))
+        th = max(1, nf.scale_coord(8, 'y'))
+        y_start = nf.scale_coord(100, 'y')
+        y_end   = min(nf.scale_coord(232, 'y'), src.shape[0] - th)
         if x + tw > src.shape[1]:
             return None
         for y in range(y_start, y_end):
