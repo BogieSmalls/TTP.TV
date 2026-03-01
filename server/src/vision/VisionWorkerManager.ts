@@ -7,6 +7,7 @@ export class VisionWorkerManager {
   private browser: Browser | null = null;
   private tabs = new Map<string, { page: Page; ws: WebSocket | null }>();
   private onStateCallback: ((state: RawPixelState) => void) | null = null;
+  private onDebugFrameCallback: ((racerId: string, jpeg: string) => void) | null = null;
   private monitoredRacers = new Set<string>();
   private featuredRacers = new Set<string>();
   private latestFrames = new Map<string, Buffer>();
@@ -22,6 +23,10 @@ export class VisionWorkerManager {
 
   onRawState(cb: (state: RawPixelState) => void): void {
     this.onStateCallback = cb;
+  }
+
+  onDebugFrame(cb: (racerId: string, jpeg: string) => void): void {
+    this.onDebugFrameCallback = cb;
   }
 
   async addRacer(config: RacerConfig): Promise<void> {
@@ -56,6 +61,7 @@ export class VisionWorkerManager {
             this.cacheFrame(racerId, msg.jpeg);
           } else if (msg.type === 'debugFrame' && typeof msg.jpeg === 'string') {
             this.cacheDebugFrame(racerId, msg.jpeg);
+            this.onDebugFrameCallback?.(racerId, msg.jpeg);
           } else if (msg.type === 'heartbeat') {
             // intentionally ignored — tab keepalive, not game state
           } else if (msg.type === 'rawState') {
@@ -109,6 +115,18 @@ export class VisionWorkerManager {
     if (entry?.ws?.readyState === WebSocket.OPEN) {
       entry.ws.send(JSON.stringify(message));
     }
+  }
+
+  startDebugStream(racerId: string): void {
+    this.sendToTab(racerId, { type: 'startDebugStream' });
+  }
+
+  stopDebugStream(racerId: string): void {
+    this.sendToTab(racerId, { type: 'stopDebugStream' });
+  }
+
+  getActiveRacerIds(): string[] {
+    return Array.from(this.tabs.keys());
   }
 
   setFeatured(racerIds: string[]): void {
