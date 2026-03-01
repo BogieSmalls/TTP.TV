@@ -35,6 +35,7 @@ export interface CalibrationUniform {
 
 export interface RawGameState {
   screenType: 'overworld' | 'dungeon' | 'cave' | 'subscreen' | 'death' | 'title' | 'transition' | 'unknown';
+  hudVisible: boolean;         // true when HUD digit NCC scores are confident
   dungeonLevel: number;
   rupees: number;
   keys: number;

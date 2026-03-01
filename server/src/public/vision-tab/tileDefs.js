@@ -82,30 +82,33 @@ export function applyLandmarks(landmarks, gridDx, gridDy) {
     set('bomb_0', 1);
   }
 
-  // Dungeon level -- digit at right end of "LVL" landmark
+  // Dungeon level -- digit "X" in "LEVEL-X " is second-to-last tile (col 9, trailing space at col 10)
   if (lm['LVL']) {
     const lvl = lm['LVL'];
     const d = defs.find(t => t.id === 'dungeon_lvl');
     if (d) {
-      d.nesX = lvl.x + lvl.w - 8 - gridDx;
+      d.nesX = lvl.x + lvl.w - 16 - gridDx;
       d.nesY = lvl.y - gridDy;
     }
   }
 
-  // B item -- starts at left edge of "B" landmark
+  // B item -- icon is centered in the B box, one row below the "B" label
   if (lm['B']) {
     const b = lm['B'];
     const d = defs.find(t => t.id === 'b_item');
-    if (d) { d.nesX = b.x - gridDx; d.nesY = b.y - gridDy; }
+    if (d) {
+      d.nesX = Math.round(b.x + (b.w - 8) / 2) - gridDx;
+      d.nesY = b.y + 8 - gridDy;
+    }
   }
 
-  // Sword/A item -- right half of "A" landmark
+  // Sword/A item -- icon is centered in the A box, one row below the "A" label
   if (lm['A']) {
     const a = lm['A'];
     const d = defs.find(t => t.id === 'sword');
     if (d) {
-      d.nesX = a.x + a.w - 8 - gridDx;
-      d.nesY = a.y - gridDy;
+      d.nesX = Math.round(a.x + (a.w - 8) / 2) - gridDx;
+      d.nesY = a.y + 8 - gridDy;
     }
   }
 

@@ -406,7 +406,7 @@ export default function VisionLab() {
 
                 {/* Live frame preview */}
                 <img
-                  src={`/api/vision/${s.racerId}/frame?t=${frameTicks[s.racerId] ?? 0}`}
+                  src={`/api/vision-py/${s.racerId}/frame?t=${frameTicks[s.racerId] ?? 0}`}
                   alt="vision frame"
                   style={{ width: '100%', maxHeight: '180px', objectFit: 'contain', borderRadius: 4, imageRendering: 'pixelated', display: 'block', background: '#000' }}
                 />

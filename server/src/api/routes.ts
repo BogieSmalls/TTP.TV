@@ -615,7 +615,7 @@ export function createApiRoutes(ctx: RouteContext): Router {
     res.json({ racerId: req.params.racerId, state });
   });
 
-  router.get('/vision/:racerId/frame', (req, res) => {
+  router.get('/vision-py/:racerId/frame', (req, res) => {
     const framePath = resolve(import.meta.dirname, '../../../data', `vision-frame-${req.params.racerId}.jpg`);
     res.sendFile(framePath, (err) => { if (err) res.status(404).end(); });
   });

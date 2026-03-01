@@ -53,7 +53,10 @@ export class VisionPipelineController {
 
   private _processRaw(raw: RawPixelState): void {
     const pipeline = this.pipelines.get(raw.racerId);
-    if (!pipeline) return;
+    if (!pipeline) {
+      console.warn(`[VisionPipeline] No pipeline for racer "${raw.racerId}" (known: ${[...this.pipelines.keys()].join(',')})`);
+      return;
+    }
 
     const rawState = pipeline.interpreter.interpret(raw);
     const stableState = pipeline.stabilizer.update(rawState);
@@ -76,6 +79,11 @@ export class VisionPipelineController {
       pending: pipeline.stabilizer.getPendingFields(),
       timestamp: raw.timestamp,
       frameCount: raw.frameNumber,
+      diag: {
+        brightness: raw.gameBrightness,
+        redAtLife: raw.redRatioAtLife,
+        goldPixels: raw.goldPixelCount,
+      },
     });
 
     if (events.length > 0) {

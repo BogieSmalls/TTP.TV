@@ -13,7 +13,8 @@ router.get('/templates', async (_req, res) => {
 
     async function loadDir(dir: string, groupKey: string) {
       const files = fs.readdirSync(dir)
-        .filter(f => f.endsWith('.png') && !f.endsWith('.bak') && !f.endsWith('.bak2'));
+        .filter(f => f.endsWith('.png') && !f.endsWith('.bak') && !f.endsWith('.bak2'))
+        .sort();
       groups[groupKey] = [];
       for (const file of files) {
         const img = await loadImage(path.join(dir, file));
@@ -63,6 +64,37 @@ router.get('/room-templates', async (_req, res) => {
   } catch (err) {
     console.error('Room template load failed:', err);
     res.status(500).json({ error: 'Room template load failed', detail: String(err) });
+  }
+});
+
+/** GET /api/vision/room-template-pixels — returns all 128 rooms as Float32 luma arrays (64×44 each)
+ *  Used by the WebGPU vision tab for GPU-side NCC room matching.
+ */
+router.get('/room-template-pixels', async (_req, res) => {
+  try {
+    const roomsDir = path.join(process.cwd(), 'content/overworld_rooms');
+    const rooms: Array<{ id: number; col: number; row: number; pixels: number[] }> = [];
+    for (let r = 1; r <= 8; r++) {
+      for (let c = 1; c <= 16; c++) {
+        const filePath = path.join(roomsDir, `C${c}_R${r}.jpg`);
+        if (!fs.existsSync(filePath)) continue;
+        const img = await loadImage(filePath);
+        const canvas = createCanvas(64, 44);
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, 64, 44);
+        const data = ctx.getImageData(0, 0, 64, 44);
+        // Luma grayscale for NCC room matching
+        const pixels: number[] = [];
+        for (let i = 0; i < data.data.length; i += 4) {
+          pixels.push((data.data[i] * 0.299 + data.data[i + 1] * 0.587 + data.data[i + 2] * 0.114) / 255);
+        }
+        rooms.push({ id: (r - 1) * 16 + (c - 1), col: c, row: r, pixels });
+      }
+    }
+    res.json(rooms);
+  } catch (err) {
+    console.error('Room template pixel load failed:', err);
+    res.status(500).json({ error: 'Room template pixel load failed', detail: String(err) });
   }
 });
 

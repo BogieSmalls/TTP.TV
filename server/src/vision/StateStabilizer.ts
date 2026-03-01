@@ -1,6 +1,6 @@
 import type { RawGameState, PendingFieldInfo, StableGameState } from './types.js';
 
-interface TrackerOptions { neverDecrease?: boolean; }
+interface TrackerOptions { neverDecrease?: boolean; maxDelta?: number; }
 
 export class StreakTracker<T> {
   private current: T;
@@ -21,6 +21,15 @@ export class StreakTracker<T> {
       this.count = 0;
       this.pending = this.current;
       return this.current;
+    }
+    // Reject values outside ±maxDelta from current (prevents corruption jumps like 3→12)
+    if (this.options.maxDelta !== undefined) {
+      const delta = Math.abs((value as unknown as number) - (this.current as unknown as number));
+      if (delta > this.options.maxDelta) {
+        this.count = 0;
+        this.pending = this.current;
+        return this.current;
+      }
     }
     if (value === this.pending) {
       this.count++;
@@ -49,8 +58,8 @@ export class StateStabilizer {
     rupees:        new StreakTracker<number>(3, 0),
     keys:          new StreakTracker<number>(3, 0),
     bombs:         new StreakTracker<number>(3, 0),
-    heartsMax:     new StreakTracker<number>(15, 3, { neverDecrease: true }),
-    heartsCurrent: new StreakTracker<number>(3, 3),
+    heartsMax:     new StreakTracker<number>(15, 3, { maxDelta: 1 }),
+    heartsCurrent: new StreakTracker<number>(3, 3, { maxDelta: 1 }),
     bItem:         new StreakTracker<string | null>(6, null),
     swordLevel:    new StreakTracker<number>(6, 0),
     hasMasterKey:  new StreakTracker<boolean>(6, false),
@@ -60,19 +69,20 @@ export class StateStabilizer {
 
   update(raw: RawGameState): StableGameState {
     const screenType = this.trackers.screenType.update(raw.screenType);
-    // HUD fields use -1 sentinel from PixelInterpreter when digit NCC scores are low
-    // (subscreen scroll, transitions, etc.) — hold last known value on sentinel
+    // Master gate: when HUD digit NCC scores aren't confident, freeze ALL HUD fields.
+    // This prevents inventory/subscreen corruption (e.g. yellow map → 12 hearts).
+    const hud = raw.hudVisible;
     return {
       screenType,
-      dungeonLevel:        raw.dungeonLevel >= 0 ? this.trackers.dungeonLevel.update(raw.dungeonLevel) : this.trackers.dungeonLevel.value,
-      rupees:              raw.rupees >= 0 ? this.trackers.rupees.update(raw.rupees) : this.trackers.rupees.value,
-      keys:                raw.keys >= 0 ? this.trackers.keys.update(raw.keys) : this.trackers.keys.value,
-      bombs:               raw.bombs >= 0 ? this.trackers.bombs.update(raw.bombs) : this.trackers.bombs.value,
-      heartsMaxStable:     raw.heartsMaxRaw >= 0 ? this.trackers.heartsMax.update(raw.heartsMaxRaw) : this.trackers.heartsMax.value,
-      heartsCurrentStable: raw.heartsCurrentRaw >= 0 ? this.trackers.heartsCurrent.update(raw.heartsCurrentRaw) : this.trackers.heartsCurrent.value,
-      bItem:               raw.bItem !== null ? this.trackers.bItem.update(raw.bItem) : this.trackers.bItem.value,
-      swordLevel:          raw.swordLevel > 0 ? this.trackers.swordLevel.update(raw.swordLevel) : this.trackers.swordLevel.value,
-      hasMasterKey:        this.trackers.hasMasterKey.update(raw.hasMasterKey),
+      dungeonLevel:        hud ? this.trackers.dungeonLevel.update(raw.dungeonLevel) : this.trackers.dungeonLevel.value,
+      rupees:              hud ? this.trackers.rupees.update(raw.rupees) : this.trackers.rupees.value,
+      keys:                hud ? this.trackers.keys.update(raw.keys) : this.trackers.keys.value,
+      bombs:               hud ? this.trackers.bombs.update(raw.bombs) : this.trackers.bombs.value,
+      heartsMaxStable:     hud ? this.trackers.heartsMax.update(raw.heartsMaxRaw) : this.trackers.heartsMax.value,
+      heartsCurrentStable: hud ? this.trackers.heartsCurrent.update(raw.heartsCurrentRaw) : this.trackers.heartsCurrent.value,
+      bItem:               hud ? this.trackers.bItem.update(raw.bItem) : this.trackers.bItem.value,
+      swordLevel:          hud ? this.trackers.swordLevel.update(raw.swordLevel) : this.trackers.swordLevel.value,
+      hasMasterKey:        hud ? this.trackers.hasMasterKey.update(raw.hasMasterKey) : this.trackers.hasMasterKey.value,
       mapPosition:         raw.mapPosition >= 0 ? this.trackers.mapPosition.update(raw.mapPosition) : this.trackers.mapPosition.value,
       floorItems:          raw.floorItems,
       triforceCollected:   this.trackers.triforce.update(raw.triforceCollected),

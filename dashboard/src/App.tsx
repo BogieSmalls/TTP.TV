@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import AppSidebar from './components/sidebar/AppSidebar';
 import { ErrorBoundary } from './ui';
 
@@ -30,8 +30,7 @@ export default function App() {
         <div className="p-6 min-h-full">
           <ErrorBoundary>
             <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/" element={<Dashboard />} />
               <Route path="/broadcast" element={<Broadcast />} />
               <Route path="/broadcast/:tab" element={<Broadcast />} />
               <Route path="/schedule" element={<Schedule />} />

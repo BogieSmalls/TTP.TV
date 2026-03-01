@@ -14,11 +14,22 @@ export class VisionWorkerManager {
   private latestFrames = new Map<string, Buffer>();
   private latestDebugFrames = new Map<string, Buffer>();
   private latestStates = new Map<string, StableGameState>();
+  private pendingDebugStreams = new Set<string>();
 
-  async start(): Promise<void> {
+  constructor(private chromiumExecutablePath: string = '') {}
+
+  async start(headless = false): Promise<void> {
     this.browser = await chromium.launch({
-      headless: true,
-      args: ['--disable-web-security', '--enable-unsafe-webgpu'],
+      headless,
+      // Explicit path avoids Playwright searching for chromium_headless_shell under the
+      // SYSTEM account profile when running as an NSSM service.
+      ...(this.chromiumExecutablePath ? { executablePath: this.chromiumExecutablePath } : {}),
+      args: [
+        '--disable-web-security',
+        '--enable-unsafe-webgpu',
+        '--no-sandbox',               // Required when running as SYSTEM (NSSM service)
+        '--disable-setuid-sandbox',
+      ],
     });
   }
 
@@ -45,19 +56,35 @@ export class VisionWorkerManager {
     tabUrl.searchParams.set('racerId', config.racerId);
     tabUrl.searchParams.set('streamUrl', hlsUrl);
     tabUrl.searchParams.set('calib', JSON.stringify(config.calibration));
+    if (config.startOffset !== undefined && config.startOffset > 0) {
+      tabUrl.searchParams.set('startOffset', String(config.startOffset));
+    }
+    if (config.landmarks && config.landmarks.length > 0) {
+      tabUrl.searchParams.set('landmarks', JSON.stringify(config.landmarks));
+    }
 
-    await page.goto(tabUrl.toString());
     this.tabs.set(config.racerId, { page, ws: null });
+    await page.goto(tabUrl.toString());
   }
 
   registerTabWebSocket(racerId: string, ws: WebSocket): void {
+    console.log(`[vision:ws] registerTabWebSocket called for "${racerId}", tabs=[${[...this.tabs.keys()].join(',')}]`);
     const entry = this.tabs.get(racerId);
     if (entry) {
       entry.ws = ws;
+      // Flush any pending commands that arrived before WebSocket connected
+      if (this.pendingDebugStreams.has(racerId)) {
+        this.pendingDebugStreams.delete(racerId);
+        ws.send(JSON.stringify({ type: 'startDebugStream' }));
+      }
+      console.log(`[vision:ws] WebSocket registered for ${racerId}`);
       ws.addEventListener('message', (event) => {
         try {
           const raw = typeof event.data === 'string' ? event.data : String(event.data);
           const msg = JSON.parse(raw);
+          if (msg.type === 'rawState') {
+            console.log(`[vision:ws] rawState received for ${racerId}, hasCallback=${!!this.onStateCallback}`);
+          }
           if (msg.type === 'calibration') {
             this.emit('calibration', msg);
           } else if (msg.type === 'previewFrame' && typeof msg.jpeg === 'string') {
@@ -70,7 +97,7 @@ export class VisionWorkerManager {
           } else if (msg.type === 'rawState') {
             this.onStateCallback?.(msg as RawPixelState);
           }
-        } catch { /* ignore malformed */ }
+        } catch (err) { console.error(`[vision:ws] Error processing message from ${racerId}:`, err); }
       });
     }
   }
@@ -121,10 +148,17 @@ export class VisionWorkerManager {
   }
 
   startDebugStream(racerId: string): void {
-    this.sendToTab(racerId, { type: 'startDebugStream' });
+    const entry = this.tabs.get(racerId);
+    if (entry?.ws?.readyState === WebSocket.OPEN) {
+      entry.ws.send(JSON.stringify({ type: 'startDebugStream' }));
+    } else {
+      // WebSocket not yet connected — queue it for when the tab registers
+      this.pendingDebugStreams.add(racerId);
+    }
   }
 
   stopDebugStream(racerId: string): void {
+    this.pendingDebugStreams.delete(racerId);
     this.sendToTab(racerId, { type: 'stopDebugStream' });
   }
 

@@ -14,10 +14,10 @@ interface Props {
   dungeonLevel: number;
 }
 
-function decodePosition(mapPosition: number): { col: number; row: number } {
+function decodePosition(mapPosition: number, gridCols: number): { col: number; row: number } {
   return {
-    col: (mapPosition & 0x0F) + 1,
-    row: (mapPosition >> 4) + 1,
+    col: (mapPosition % gridCols) + 1,
+    row: Math.floor(mapPosition / gridCols) + 1,
   };
 }
 
@@ -46,8 +46,9 @@ export function WebGPUMinimap({ mapPosition, screenType, dungeonLevel }: Props) 
     visitedRef.current.get(key)!.add(mapPosition);
   }, [mapPosition, screenType, dungeonLevel]);
 
-  const isDungeon = screenType === 'dungeon';
-  const currentPos = decodePosition(mapPosition);
+  const isDungeon = dungeonLevel > 0;
+  const gridCols = isDungeon ? 8 : 16;
+  const currentPos = decodePosition(mapPosition, gridCols);
   const visitedKey = isDungeon ? dungeonLevel : 0;
   const visited = visitedRef.current.get(visitedKey) ?? new Set<number>();
 
@@ -60,7 +61,7 @@ export function WebGPUMinimap({ mapPosition, screenType, dungeonLevel }: Props) 
           {Array.from({ length: 64 }, (_, i) => {
             const col = (i % 8) + 1;
             const row = Math.floor(i / 8) + 1;
-            const pos = ((row - 1) << 4) | (col - 1);
+            const pos = (row - 1) * 8 + (col - 1);
             const isCurrent = mapPosition >= 0 && currentPos.col === col && currentPos.row === row;
             const isVisited = visited.has(pos);
             return (
@@ -89,7 +90,7 @@ export function WebGPUMinimap({ mapPosition, screenType, dungeonLevel }: Props) 
           const col = (i % 16) + 1;
           const row = Math.floor(i / 16) + 1;
           const isCurrent = hasPosition && currentPos.col === col && currentPos.row === row;
-          const pos = ((row - 1) << 4) | (col - 1);
+          const pos = (row - 1) * 16 + (col - 1);
           const isVisited = visited.has(pos);
           const src = tileMap.get(`${col}-${row}`);
           return (

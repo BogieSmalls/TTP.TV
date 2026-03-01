@@ -92,7 +92,7 @@ export default function AppSidebar() {
       {/* Navigation */}
       <div className="flex-1 py-2 overflow-y-auto overflow-x-hidden">
         <SidebarSection title="Produce" collapsed={collapsed}>
-          <SidebarLink to="/dashboard" icon={LayoutDashboard} label="Dashboard" collapsed={collapsed} />
+          <SidebarLink to="/" icon={LayoutDashboard} label="Dashboard" collapsed={collapsed} />
           <SidebarLink to="/broadcast" icon={Radio} label="Broadcast" collapsed={collapsed} />
           <SidebarLink to="/schedule" icon={Calendar} label="Schedule" collapsed={collapsed} />
         </SidebarSection>

@@ -102,8 +102,8 @@ async function main() {
   const visionLogDb = new VisionLogDb(resolve(import.meta.dirname, '../../data/vision-log.db'));
 
   // ─── Vision Worker Manager (WebGPU browser-side pipeline) ───
-  const visionWorkerManager = new VisionWorkerManager();
-  visionWorkerManager.start().catch(err => logger.error('VisionWorkerManager start failed', { err }));
+  const visionWorkerManager = new VisionWorkerManager(config.tools.chromiumExecutablePath);
+  visionWorkerManager.start().catch(err => logger.error(`VisionWorkerManager start failed: ${err?.message ?? err}`));
 
   // ─── Vision Pipeline Controller (RawPixelState → events) ───
   const visionController = new VisionPipelineController(visionWorkerManager);
@@ -113,6 +113,10 @@ async function main() {
   });
 
   visionController.onStateUpdate((update) => {
+    const visionRoom = io.sockets.adapter.rooms.get('vision');
+    if (update.frameCount % 60 === 0) {
+      logger.info(`[vision:emit] state update for ${update.racerId} frame=${update.frameCount} screen=${update.stable.screenType} clients=${visionRoom?.size ?? 0}`);
+    }
     io.to('vision').emit('vision:webgpu:state', update);
   });
 
@@ -345,8 +349,11 @@ async function main() {
     commentaryEngine.setRaceContext({ standings });
   });
 
-  // Serve vision-tab static files (browser-side WebGPU pipeline)
-  app.use('/vision-tab', express.static(resolve(import.meta.dirname, '../public/vision-tab')));
+  // Serve vision-tab static files (browser-side WebGPU pipeline) — no caching during dev
+  app.use('/vision-tab', express.static(resolve(import.meta.dirname, 'public/vision-tab'), {
+    etag: false, lastModified: false, maxAge: 0,
+    setHeaders: (res) => res.setHeader('Cache-Control', 'no-store'),
+  }));
 
   // Serve TTS audio files
   app.use('/tts', express.static(ttsManager.getAudioDir()));
@@ -381,7 +388,7 @@ async function main() {
   app.use('/api/vision', templateRouter);
 
   // Vision preview/debug/state REST endpoints (operator tooling)
-  app.use('/api/vision', createVisionRoutes(visionWorkerManager, visionController));
+  app.use('/api/vision', createVisionRoutes(visionWorkerManager, visionController, cropProfileService, db));
 
   // API routes
   const apiRouter = createApiRoutes({
@@ -544,12 +551,24 @@ async function main() {
   });
 
   // ─── Vision Tab WebSocket Endpoint ───
-  const visionWss = new WebSocketServer({ server: httpServer, path: '/vision-tab-ws' });
+  // Use noServer mode to avoid conflicting with Socket.IO's WebSocket upgrade handler.
+  // ws's { server, path } mode aborts non-matching upgrade requests (HTTP 400), which
+  // kills Socket.IO's WebSocket transport and forces it to fall back to polling.
+  const visionWss = new WebSocketServer({ noServer: true });
   visionWss.on('connection', (tabWs, req) => {
     const url = new URL(req.url!, `http://localhost`);
     const racerId = url.searchParams.get('racerId');
-    // ws package type vs Node.js 22 built-in global WebSocket — structurally identical at runtime
     if (racerId) visionWorkerManager.registerTabWebSocket(racerId, tabWs as unknown as WebSocket);
+  });
+  httpServer.on('upgrade', (req, socket, head) => {
+    const pathname = req.url ? req.url.split('?')[0] : '';
+    logger.info(`[ws-upgrade] path=${pathname} url=${req.url}`);
+    if (pathname === '/vision-tab-ws') {
+      visionWss.handleUpgrade(req, socket, head, (ws) => {
+        logger.info(`[ws-upgrade] vision-tab-ws connected`);
+        visionWss.emit('connection', ws, req);
+      });
+    }
   });
 
   // ─── Start HTTP Server ───

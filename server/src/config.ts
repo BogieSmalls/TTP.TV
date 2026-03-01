@@ -119,6 +119,7 @@ export const config = {
   tools: {
     ffmpegPath: (fileConfig.tools?.ffmpegPath as string) ?? 'ffmpeg',
     streamlinkPath: (fileConfig.tools?.streamlinkPath as string) ?? 'streamlink',
+    chromiumExecutablePath: (fileConfig.tools?.chromiumExecutablePath as string) ?? '',
   },
   mediaServer: {
     http: {
@@ -189,6 +190,7 @@ export function getEditableConfig(cfg: Config) {
     tools: {
       ffmpegPath: cfg.tools.ffmpegPath,
       streamlinkPath: cfg.tools.streamlinkPath,
+      chromiumExecutablePath: cfg.tools.chromiumExecutablePath,
     },
   };
 }

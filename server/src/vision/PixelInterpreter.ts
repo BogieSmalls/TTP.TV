@@ -71,6 +71,7 @@ export class PixelInterpreter {
     const hearts = hudVisible ? this._readHearts(raw) : { current: -1, max: -1 };
     return {
       screenType,
+      hudVisible,
       dungeonLevel,
       rupees: hudVisible ? Math.min(this._readCounter(raw, ['rupee_0', 'rupee_1', 'rupee_2'], RUPEE_MIN_SCORE), 255) : -1,
       keys: hudVisible ? this._readCounter(raw, ['key_0', 'key_1'], KEY_MIN_SCORE) : -1,
@@ -80,7 +81,7 @@ export class PixelInterpreter {
       bItem: hudVisible ? this._readItem(raw, 'b_item') : null,
       swordLevel: hudVisible ? this._readSwordLevel(raw) : 0,
       hasMasterKey: hudVisible ? this._checkMasterKey(raw) : false,
-      mapPosition: this._bestRoom(raw),
+      mapPosition: this._bestRoom(raw, dungeonLevel),
       floorItems: raw.floorItems.map(fi => ({
         name: TEMPLATE_NAMES['drops_8x16']?.[fi.templateIdx] ?? 'unknown',
         x: fi.x,
@@ -155,10 +156,11 @@ export class PixelInterpreter {
     return maxScore < MASTER_KEY_SCORE_THRESHOLD;
   }
 
-  private _bestRoom(raw: RawPixelState): number {
+  private _bestRoom(raw: RawPixelState, dungeonLevel: number): number {
     if (!raw.roomScores || raw.roomScores.length === 0) return -1;
 
     const dot = this._findMinimapDot(raw);
+    const isDungeon = dungeonLevel > 0;
 
     // Diagnostic: log minimap + room scores every 60 frames
     if (this._diagCounter % 60 === 1) {
@@ -167,12 +169,22 @@ export class PixelInterpreter {
         if (raw.roomScores[i] > bestScore) { bestScore = raw.roomScores[i]; bestIdx = i; }
       }
       const nccCol = (bestIdx % 16) + 1, nccRow = Math.floor(bestIdx / 16) + 1;
-      console.log(`[room-diag] ncc=C${nccCol}R${nccRow}@${bestScore.toFixed(3)} dot=${dot ? `C${dot.col}R${dot.row}` : 'none'}`);
+      if (isDungeon && dot) {
+        const dc = Math.ceil(dot.col / 2), dr = dot.row;
+        console.log(`[room-diag] dungeon L${dungeonLevel} dot=D${dc},${dr} (raw C${dot.col}R${dot.row})`);
+      } else {
+        console.log(`[room-diag] ncc=C${nccCol}R${nccRow}@${bestScore.toFixed(3)} dot=${dot ? `C${dot.col}R${dot.row}` : 'none'}`);
+      }
     }
 
     if (dot) {
-      // Accept only exact dot position — no ±1 fallback (eliminates neighbor
-      // false positives during screen scrolls)
+      if (isDungeon) {
+        // Dungeon minimap: 8×8 grid, each room spans 2 overworld cells horizontally.
+        // No NCC check — overworld room templates don't apply in dungeons.
+        const dungeonCol = Math.ceil(dot.col / 2);
+        return (dot.row - 1) * 8 + (dungeonCol - 1);
+      }
+      // Overworld: exact 16×8 position with NCC confirmation
       const exactIdx = (dot.row - 1) * 16 + (dot.col - 1);
       const exactScore = raw.roomScores[exactIdx] ?? -1;
       return exactScore >= ROOM_MATCH_THRESHOLD ? exactIdx : -1;

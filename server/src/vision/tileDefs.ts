@@ -1,3 +1,6 @@
+import fs from 'fs';
+import path from 'path';
+
 export const MAX_TEMPLATES = 32;
 
 export interface TileDef {
@@ -35,10 +38,21 @@ export const TILE_DEFS: TileDef[] = [
   { id: 'sword', nesX: 152, nesY: 24, size: '8x16', templateGroup: '8x16' },
 ];
 
-// Template name registry — populated at server startup from templateServer response
+// Template name registry — loaded from filesystem at module init.
+// Order must match templateServer.ts (readdirSync + sort + filter .png).
+function loadTemplateNames(subdir: string): string[] {
+  try {
+    const dir = path.join(process.cwd(), 'vision/templates', subdir);
+    return fs.readdirSync(dir)
+      .filter(f => f.endsWith('.png') && !f.endsWith('.bak') && !f.endsWith('.bak2'))
+      .sort()
+      .map(f => f.replace('.png', ''));
+  } catch { return []; }
+}
+
 export const TEMPLATE_NAMES: Record<string, string[]> = {
-  '8x8': [],
-  '8x16': [],
-  drops_8x16: [],
-  enemies_32x32: [],
+  '8x8': loadTemplateNames('digits'),
+  '8x16': loadTemplateNames('items'),
+  drops_8x16: loadTemplateNames('drops'),
+  enemies_32x32: loadTemplateNames('enemies'),
 };
