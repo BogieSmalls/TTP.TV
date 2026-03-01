@@ -62,6 +62,7 @@ let frameCount = 0;
 let debugStreamActive = false;
 let lastFrameTime = Date.now();
 let lastHeartTiles = null;
+let lastMinimapCells = null;
 
 // Off-screen canvas for tile color sampling (reused each frame)
 const colorCanvas = document.createElement('canvas');
@@ -227,6 +228,7 @@ async function onVideoFrame(now, metadata) {
     const heartTiles = sampleHearts();
     lastHeartTiles = heartTiles;
     const minimapCells = sampleMinimap();
+    lastMinimapCells = minimapCells;
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({
         type: 'rawState',
@@ -437,6 +439,44 @@ function sendDebugFrame() {
           ctx.fillText(`${tile.colorRatio.toFixed(2)}`, cx, cy + ch + 7);
           ctx.fillText(`${tile.whiteRatio.toFixed(2)}`, cx, cy + ch + 14);
         }
+      }
+    }
+  }
+
+  // Draw minimap dot overlay
+  if (calibration && landmarks && lastMinimapCells) {
+    const lm = landmarks.find(l => l.label === 'Minimap');
+    if (lm) {
+      const vw = video.videoWidth || 1;
+      const vh = video.videoHeight || 1;
+      const mx = 320 / vw;
+      const my = 240 / vh;
+      const gdx = calibration.gridDx ?? 0;
+      const gdy = calibration.gridDy ?? 0;
+      // Find the dot (highest saturation cell)
+      let bestIdx = 0, bestSat = -1;
+      for (let i = 0; i < lastMinimapCells.length; i++) {
+        if (lastMinimapCells[i] > bestSat) { bestSat = lastMinimapCells[i]; bestIdx = i; }
+      }
+      if (bestSat >= 20) {
+        const dotCol = bestIdx % 16;
+        const dotRow = Math.floor(bestIdx / 16);
+        const nesX = lm.x + dotCol * 4;
+        const nesY = lm.y + dotRow * 4;
+        const streamX = calibration.cropX + (nesX + gdx) * calibration.scaleX;
+        const streamY = calibration.cropY + (nesY + gdy) * calibration.scaleY;
+        const streamW = 4 * calibration.scaleX;
+        const streamH = 4 * calibration.scaleY;
+        const cx = streamX * mx;
+        const cy = streamY * my;
+        const cw = streamW * mx;
+        const ch = streamH * my;
+        ctx.strokeStyle = 'rgba(0, 255, 0, 0.9)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(cx, cy, cw, ch);
+        ctx.fillStyle = 'white';
+        ctx.font = '7px monospace';
+        ctx.fillText(`C${dotCol + 1}R${dotRow + 1} s=${bestSat.toFixed(0)}`, cx, cy - 2);
       }
     }
   }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import linkSprite from '../../assets/link-front.gif';
 
 interface RoomTemplate {
   id: number;
@@ -60,7 +61,7 @@ export function WebGPUMinimap({ mapPosition, screenType, dungeonLevel }: Props) 
             const col = (i % 8) + 1;
             const row = Math.floor(i / 8) + 1;
             const pos = ((row - 1) << 4) | (col - 1);
-            const isCurrent = currentPos.col === col && currentPos.row === row;
+            const isCurrent = mapPosition >= 0 && currentPos.col === col && currentPos.row === row;
             const isVisited = visited.has(pos);
             return (
               <div
@@ -79,6 +80,7 @@ export function WebGPUMinimap({ mapPosition, screenType, dungeonLevel }: Props) 
   }
 
   // 16×8 overworld tile grid
+  const hasPosition = mapPosition >= 0;
   return (
     <div>
       <div className="text-xs text-gray-400 mb-1">Overworld</div>
@@ -86,14 +88,14 @@ export function WebGPUMinimap({ mapPosition, screenType, dungeonLevel }: Props) 
         {Array.from({ length: 128 }, (_, i) => {
           const col = (i % 16) + 1;
           const row = Math.floor(i / 16) + 1;
-          const isCurrent = currentPos.col === col && currentPos.row === row;
+          const isCurrent = hasPosition && currentPos.col === col && currentPos.row === row;
           const pos = ((row - 1) << 4) | (col - 1);
           const isVisited = visited.has(pos);
           const src = tileMap.get(`${col}-${row}`);
           return (
             <div
               key={i}
-              className={`relative ${isCurrent ? 'ring-2 ring-yellow-400 ring-inset z-10' : ''}`}
+              className={`relative ${isCurrent ? 'ring-2 ring-green-400 ring-inset z-10' : ''}`}
             >
               {src ? (
                 <img
@@ -105,6 +107,14 @@ export function WebGPUMinimap({ mapPosition, screenType, dungeonLevel }: Props) 
                 <div
                   className={`w-full bg-gray-800 ${!isVisited && !isCurrent ? 'opacity-40' : ''}`}
                   style={{ paddingTop: '68.75%' /* 44/64 aspect ratio */ }}
+                />
+              )}
+              {isCurrent && (
+                <img
+                  src={linkSprite}
+                  alt="Link"
+                  className="absolute inset-0 m-auto w-3/4 h-3/4 object-contain pointer-events-none z-20"
+                  style={{ imageRendering: 'pixelated' }}
                 />
               )}
             </div>
