@@ -6,6 +6,7 @@ import cv2
 sys.path.insert(0, os.path.dirname(__file__))
 from detector.hud_reader import HudReader
 from detector.digit_reader import DigitReader
+from detector.nes_frame import NESFrame, extract_nes_crop
 
 CROP = {"x": 383, "y": 24, "w": 871, "h": 670}
 STREAM_W, STREAM_H = 1280, 720
@@ -26,8 +27,11 @@ TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates", "digits")
 
 def main():
     digit_reader = DigitReader(TEMPLATE_DIR)
-    hud = HudReader(grid_offset=(0, 0), landmarks=LANDMARKS)
+    hud = HudReader(landmarks=LANDMARKS)
     print(f"Grid offset: dx={hud.grid_dx}, dy={hud.grid_dy}")
+    _rupee_lm = next(l for l in LANDMARKS if l['label'] == 'Rupees')
+    _key_lm = next(l for l in LANDMARKS if l['label'] == 'Keys')
+    _bomb_lm = next(l for l in LANDMARKS if l['label'] == 'Bombs')
 
     proc = subprocess.run(
         ["streamlink", "--stream-url", VOD_URL, "best"],
@@ -60,13 +64,15 @@ def main():
 
         # Method 1: Old tile-based extraction (for ground truth comparison)
         print(f"\n=== t={ts}s ===")
+        nes_region = extract_nes_crop(sf, x, y, w, h)
+        nf = NESFrame(nes_region, w / 256.0, h / 240.0)
+        nf_canon = NESFrame(canonical, 1.0, 1.0)
         print("\n--- Method 1: Individual tile extraction (stream source) ---")
-        hud.set_stream_source(sf, x, y, w, h)
         # Rupees tiles at cols 12,13,14, row 2
         rup_cols = hud.RUPEE_DIGIT_COLS
         rup_row = hud.RUPEE_DIGIT_ROW
         for i, col in enumerate(rup_cols):
-            tile = hud._tile(canonical, col, rup_row)
+            tile = nf.tile(col, rup_row)
             d = digit_reader.read_digit(tile)
             gray = cv2.cvtColor(tile, cv2.COLOR_BGR2GRAY)
             print(f"  Rupee tile[{i}] col={col} row={rup_row}: digit={d}, brightness={np.mean(gray):.1f}")
@@ -74,26 +80,26 @@ def main():
             cv2.imwrite(f"{outdir}/t{ts}_tile_rup{i}_d{d}.png", big)
         # Keys
         for i, col in enumerate(hud.KEY_DIGIT_COLS):
-            tile = hud._tile(canonical, col, hud.KEY_DIGIT_ROW)
+            tile = nf.tile(col, hud.KEY_DIGIT_ROW)
             d = digit_reader.read_digit(tile)
             gray = cv2.cvtColor(tile, cv2.COLOR_BGR2GRAY)
             print(f"  Key tile[{i}] col={col} row={hud.KEY_DIGIT_ROW}: digit={d}, brightness={np.mean(gray):.1f}")
         # Bombs
         for i, col in enumerate(hud.BOMB_DIGIT_COLS):
-            tile = hud._tile(canonical, col, hud.BOMB_DIGIT_ROW)
+            tile = nf.tile(col, hud.BOMB_DIGIT_ROW)
             d = digit_reader.read_digit(tile)
             gray = cv2.cvtColor(tile, cv2.COLOR_BGR2GRAY)
             print(f"  Bomb tile[{i}] col={col} row={hud.BOMB_DIGIT_ROW}: digit={d}, brightness={np.mean(gray):.1f}")
 
         # Method 2: Strip extraction
         print("\n--- Method 2: Strip extraction (stream source) ---")
-        for name, lm, nd in [("rup", hud._rupee_lm, 3), ("key", hud._key_lm, 2), ("bmb", hud._bomb_lm, 2)]:
+        for name, lm, nd in [("rup", _rupee_lm, 3), ("key", _key_lm, 2), ("bmb", _bomb_lm, 2)]:
             total_chars = max(nd + 1, round(lm['w'] / 8))
             norm_w = total_chars * 8
             center_x = lm['x'] + lm['w'] / 2
             start_x = int(round(center_x - norm_w / 2))
 
-            strip = hud._extract(canonical, start_x, lm['y'], norm_w, 8)
+            strip = nf.extract(start_x, lm['y'], norm_w, 8)
             strip_gray = cv2.cvtColor(strip, cv2.COLOR_BGR2GRAY)
 
             # Save strip zoomed
@@ -111,17 +117,15 @@ def main():
                 big = cv2.resize(tile_from_strip, (64, 64), interpolation=cv2.INTER_NEAREST)
                 cv2.imwrite(f"{outdir}/t{ts}_strip_{name}_char{i}_d{d}.png", big)
 
-        hud.clear_stream_source()
-
         # Method 3: read_digit on the exact same strip positions (canonical)
         print("\n--- Method 3: Strip extraction (canonical only) ---")
-        for name, lm, nd in [("rup", hud._rupee_lm, 3), ("key", hud._key_lm, 2), ("bmb", hud._bomb_lm, 2)]:
+        for name, lm, nd in [("rup", _rupee_lm, 3), ("key", _key_lm, 2), ("bmb", _bomb_lm, 2)]:
             total_chars = max(nd + 1, round(lm['w'] / 8))
             norm_w = total_chars * 8
             center_x = lm['x'] + lm['w'] / 2
             start_x = int(round(center_x - norm_w / 2))
 
-            strip = hud._extract(canonical, start_x, lm['y'], norm_w, 8)
+            strip = nf_canon.extract(start_x, lm['y'], norm_w, 8)
             strip_gray = cv2.cvtColor(strip, cv2.COLOR_BGR2GRAY)
 
             digit_start = total_chars - nd

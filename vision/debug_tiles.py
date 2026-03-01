@@ -6,6 +6,7 @@ import cv2
 sys.path.insert(0, os.path.dirname(__file__))
 from detector.hud_reader import HudReader
 from detector.digit_reader import DigitReader
+from detector.nes_frame import NESFrame, extract_nes_crop
 
 CROP = {"x": 383, "y": 24, "w": 871, "h": 670}
 STREAM_W, STREAM_H = 1280, 720
@@ -26,9 +27,9 @@ TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates", "digits")
 
 def main():
     digit_reader = DigitReader(TEMPLATE_DIR)
-    hud = HudReader(grid_offset=(0, 0), landmarks=LANDMARKS)
+    hud = HudReader(landmarks=LANDMARKS)
 
-    print(f"Grid offset: dx={hud.grid_dx}, dy={hud.grid_dy}")
+    print(f"Grid offset: dx=0, dy=0 (passed to NESFrame per-frame)")
     print(f"RUPEE_DIGIT_COLS={hud.RUPEE_DIGIT_COLS}, ROW={hud.RUPEE_DIGIT_ROW}")
     print(f"KEY_DIGIT_COLS={hud.KEY_DIGIT_COLS}, ROW={hud.KEY_DIGIT_ROW}")
     print(f"BOMB_DIGIT_COLS={hud.BOMB_DIGIT_COLS}, ROW={hud.BOMB_DIGIT_ROW}")
@@ -57,9 +58,9 @@ def main():
 
         sf = np.frombuffer(proc.stdout, dtype=np.uint8).reshape((STREAM_H, STREAM_W, 3))
         x, y, w, h = CROP["x"], CROP["y"], CROP["w"], CROP["h"]
-        canonical = cv2.resize(sf[y:y+h, x:x+w], (256, 240), interpolation=cv2.INTER_NEAREST)
-
-        hud.set_stream_source(sf, x, y, w, h)
+        nes_region = extract_nes_crop(sf, x, y, w, h)
+        nf = NESFrame(nes_region, w / 256.0, h / 240.0, grid_dx=0, grid_dy=0)
+        canonical = nf.to_canonical()
 
         print(f"\n=== t={ts} ===")
 
@@ -68,11 +69,11 @@ def main():
         big = cv2.resize(hud_area, (256*4, 64*4), interpolation=cv2.INTER_NEAREST)
         # Draw grid lines
         for col in range(32):
-            gx = (col * 8 + hud.grid_dx) * 4
+            gx = (col * 8 + nf.grid_dx) * 4
             if 0 <= gx < big.shape[1]:
                 big[:, gx, :] = [0, 128, 0]  # green vertical lines
         for row in range(8):
-            gy = (row * 8 + hud.grid_dy) * 4
+            gy = (row * 8 + nf.grid_dy) * 4
             if 0 <= gy < big.shape[0]:
                 big[gy, :, :] = [0, 128, 0]  # green horizontal lines
         cv2.imwrite(f"{outdir}/t{ts}_hud_grid.png", big)
@@ -85,11 +86,11 @@ def main():
         ]:
             print(f"  {name}: cols={cols}, row={row}")
             for i, col in enumerate(cols):
-                tile = hud._tile(canonical, col, row)
+                tile = nf.tile(col, row)
                 # Save tile at 8x zoom
                 big_tile = cv2.resize(tile, (64, 64), interpolation=cv2.INTER_NEAREST)
-                nes_x = col * 8 + hud.grid_dx
-                nes_y = row * 8 + hud.grid_dy
+                nes_x = col * 8 + nf.grid_dx
+                nes_y = row * 8 + nf.grid_dy
                 cv2.imwrite(f"{outdir}/t{ts}_{name}_c{col}r{row}.png", big_tile)
 
                 # Template match
@@ -111,7 +112,7 @@ def main():
         # Also extract tiles at shifted positions to see what's nearby
         print(f"  --- rupee area scan (row={hud.RUPEE_DIGIT_ROW}) ---")
         for col in range(10, 16):
-            tile = hud._tile(canonical, col, hud.RUPEE_DIGIT_ROW)
+            tile = nf.tile(col, hud.RUPEE_DIGIT_ROW)
             gray = cv2.cvtColor(tile, cv2.COLOR_BGR2GRAY)
             mean_val = float(np.mean(gray))
             d = digit_reader.read_digit(tile)
@@ -123,7 +124,7 @@ def main():
                 if score > best_score:
                     best_score = score
                     best_d = digit
-            nes_x = col * 8 + hud.grid_dx
+            nes_x = col * 8 + nf.grid_dx
             flag = " <-- digit col" if col in hud.RUPEE_DIGIT_COLS else ""
             print(f"    col={col} x={nes_x}: mean={mean_val:.1f} "
                   f"best={best_d}@{best_score:.3f} read={d}{flag}")
@@ -134,8 +135,8 @@ def main():
         print(f"  --- dx sweep for rupee ones (expected col14, row={hud.RUPEE_DIGIT_ROW}) ---")
         for dx_test in range(8):
             nes_x = 14 * 8 + dx_test
-            nes_y = hud.RUPEE_DIGIT_ROW * 8 + hud.grid_dy
-            tile = hud._extract(canonical, nes_x, nes_y, 8, 8)
+            nes_y = hud.RUPEE_DIGIT_ROW * 8 + nf.grid_dy
+            tile = nf.extract(nes_x, nes_y, 8, 8)
             d = digit_reader.read_digit(tile)
             best_score = 0.0
             best_d = None
@@ -148,7 +149,7 @@ def main():
                     best_d = digit
             print(f"    dx={dx_test}: x={nes_x} best={best_d}@{best_score:.3f} read={d}")
 
-        hud.clear_stream_source()
+        # nf goes out of scope at next iteration
 
 
 if __name__ == "__main__":

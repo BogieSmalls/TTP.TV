@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from detector.hud_reader import HudReader
 from detector.digit_reader import DigitReader
 from detector.item_reader import ItemReader
+from detector.nes_frame import NESFrame, extract_nes_crop
 
 CROP = {"x": 383, "y": 24, "w": 871, "h": 670}
 STREAM_W, STREAM_H = 1280, 720
@@ -30,7 +31,7 @@ TIMESTAMPS = [600, 1500, 2400, 2700]
 def main():
     digit_reader = DigitReader(TEMPLATE_DIR)
     item_reader = ItemReader(ITEM_TEMPLATE_DIR)
-    hud = HudReader(grid_offset=(0, 0), landmarks=LANDMARKS)
+    hud = HudReader(landmarks=LANDMARKS)
 
     proc = subprocess.run(
         ["streamlink", "--stream-url", VOD_URL, "best"],
@@ -60,16 +61,17 @@ def main():
         canonical = cv2.resize(sf[y:y+h, x:x+w], (256, 240),
                                interpolation=cv2.INTER_NEAREST)
 
-        hud.set_stream_source(sf, x, y, w, h)
+        nf = NESFrame(extract_nes_crop(sf, x, y, w, h),
+                      w / 256.0, h / 240.0, grid_dx=0, grid_dy=0)
 
         # Read all values
-        hearts, max_h, half = hud.read_hearts(canonical)
-        rupees = hud.read_rupees(canonical, digit_reader)
-        keys, master = hud.read_keys(canonical, digit_reader)
-        bombs = hud.read_bombs(canonical, digit_reader)
-        lvl = hud.read_dungeon_level(canonical, digit_reader)
-        sword = hud.read_sword(canonical)
-        b_item = hud.read_b_item(canonical, item_reader)
+        hearts, max_h, half = hud.read_hearts(nf)
+        rupees = hud.read_rupees(nf, digit_reader)
+        keys, master = hud.read_keys(nf, digit_reader)
+        bombs = hud.read_bombs(nf, digit_reader)
+        lvl = hud.read_dungeon_level(nf, digit_reader)
+        sword = hud.read_sword(nf)
+        b_item = hud.read_b_item(nf, item_reader)
 
         sword_names = {0: "none", 1: "wood", 2: "white", 3: "magical"}
 
@@ -92,8 +94,6 @@ def main():
         print(f"t={ts}: Rup={rupees} Key={keys}{'(MK)' if master else ''} "
               f"Bmb={bombs} H={hearts}/{max_h}{'h' if half else ''} "
               f"LVL={lvl} Sw={sword_names[sword]} B={b_item}")
-
-        hud.clear_stream_source()
 
     print(f"\nSaved to {outdir}/")
 

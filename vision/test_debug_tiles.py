@@ -6,6 +6,7 @@ import cv2
 sys.path.insert(0, os.path.dirname(__file__))
 from detector.hud_reader import HudReader
 from detector.digit_reader import DigitReader
+from detector.nes_frame import NESFrame, extract_nes_crop
 
 CROP = {"x": 383, "y": 24, "w": 871, "h": 670}
 STREAM_W, STREAM_H = 1280, 720
@@ -26,10 +27,10 @@ TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates", "digits")
 
 def main():
     digit_reader = DigitReader(TEMPLATE_DIR)
-    hud = HudReader(grid_offset=(0, 0), landmarks=LANDMARKS)
+    hud = HudReader(landmarks=LANDMARKS)
 
     # Show computed pixel positions
-    print(f"Grid offset: dx={hud.grid_dx}, dy={hud.grid_dy}")
+    print(f"Grid offset: dx=0, dy=0 (grid offset now lives on NESFrame)")
     if hasattr(hud, '_rupee_digit_px'):
         print(f"Rupee digit px: {hud._rupee_digit_px}")
     if hasattr(hud, '_key_digit_px'):
@@ -81,14 +82,15 @@ def main():
         big_hud = cv2.resize(hud_area, (hud_area.shape[1]*4, hud_area.shape[0]*4), interpolation=cv2.INTER_NEAREST)
         cv2.imwrite(f"debug_tiles2/t{ts}_hud_zoom.png", big_hud)
 
-        # Extract tiles with stream source
-        hud.set_stream_source(sf, x, y, w, h)
+        # Extract tiles with stream source (NESFrame)
+        nf_stream = NESFrame(extract_nes_crop(sf, x, y, w, h),
+                             w / 256.0, h / 240.0, grid_dx=0, grid_dy=0)
         print(f"\n=== t={ts}s (stream extraction) ===")
         for name, positions in [("rup", getattr(hud, '_rupee_digit_px', [])),
                                  ("key", getattr(hud, '_key_digit_px', [])),
                                  ("bmb", getattr(hud, '_bomb_digit_px', []))]:
             for i, (px, py) in enumerate(positions):
-                tile = hud._extract(canonical, px, py, 8, 8)
+                tile = nf_stream.extract(px, py, 8, 8)
                 gray = cv2.cvtColor(tile, cv2.COLOR_BGR2GRAY)
                 d = digit_reader.read_digit(tile)
                 mean_b = float(np.mean(gray))
@@ -97,21 +99,19 @@ def main():
                 print(f"  {name}[{i}] px=({px},{py}) -> digit={d}, brightness={mean_b:.1f}")
 
         # Extract tiles WITHOUT stream source (canonical only)
-        hud.clear_stream_source()
+        nf_canon = NESFrame(canonical, 1.0, 1.0, grid_dx=0, grid_dy=0)
         print(f"=== t={ts}s (canonical only) ===")
         for name, positions in [("rup", getattr(hud, '_rupee_digit_px', [])),
                                  ("key", getattr(hud, '_key_digit_px', [])),
                                  ("bmb", getattr(hud, '_bomb_digit_px', []))]:
             for i, (px, py) in enumerate(positions):
-                tile = hud._extract(canonical, px, py, 8, 8)
+                tile = nf_canon.extract(px, py, 8, 8)
                 gray = cv2.cvtColor(tile, cv2.COLOR_BGR2GRAY)
                 d = digit_reader.read_digit(tile)
                 mean_b = float(np.mean(gray))
                 big = cv2.resize(tile, (64, 64), interpolation=cv2.INTER_NEAREST)
                 cv2.imwrite(f"debug_tiles2/t{ts}_canon_{name}{i}_d{d}_b{mean_b:.0f}.png", big)
                 print(f"  {name}[{i}] px=({px},{py}) -> digit={d}, brightness={mean_b:.1f}")
-
-        hud.clear_stream_source()
 
 
 if __name__ == "__main__":

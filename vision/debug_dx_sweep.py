@@ -6,6 +6,7 @@ import cv2
 sys.path.insert(0, os.path.dirname(__file__))
 from detector.hud_reader import HudReader
 from detector.digit_reader import DigitReader
+from detector.nes_frame import NESFrame, extract_nes_crop
 
 CROP = {"x": 383, "y": 24, "w": 871, "h": 670}
 STREAM_W, STREAM_H = 1280, 720
@@ -29,6 +30,7 @@ TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates", "digits")
 
 def main():
     digit_reader = DigitReader(TEMPLATE_DIR)
+    hud = HudReader()
 
     proc = subprocess.run(
         ["streamlink", "--stream-url", VOD_URL, "best"],
@@ -51,6 +53,9 @@ def main():
 
         sf = np.frombuffer(proc.stdout, dtype=np.uint8).reshape((STREAM_H, STREAM_W, 3))
         x, y, w, h = CROP["x"], CROP["y"], CROP["w"], CROP["h"]
+        nes_region = extract_nes_crop(sf, x, y, w, h)
+        scale_x = w / 256.0
+        scale_y = h / 240.0
 
         print(f"\n=== t={ts} ===")
 
@@ -67,15 +72,13 @@ def main():
             print(f"\n  {label} (rup_row={rup_row}, key_row={key_row}, bmb_row={bmb_row}):")
             for dx in range(8):
                 for dy_test in range(max(0, dy - 2), min(8, dy + 3)):
-                    # Create a minimal HudReader with specific offset
-                    hud = HudReader(grid_offset=(dx, dy_test))
-                    hud.set_stream_source(sf, x, y, w, h)
+                    nf = NESFrame(nes_region, scale_x, scale_y, grid_dx=dx, grid_dy=dy_test)
 
                     # Read rupee digits
                     rup_digits = []
                     rup_scores = []
                     for col in [12, 13, 14]:
-                        tile = hud._tile(sf, col, rup_row)
+                        tile = nf.tile(col, rup_row)
                         gray = cv2.cvtColor(tile, cv2.COLOR_BGR2GRAY)
                         mean_val = float(np.mean(gray))
                         if mean_val < 10:
@@ -94,13 +97,13 @@ def main():
                         rup_scores.append(best_score)
 
                     # Read key digit
-                    key_tile = hud._tile(sf, 14, key_row)
+                    key_tile = nf.tile(14, key_row)
                     key_gray = cv2.cvtColor(key_tile, cv2.COLOR_BGR2GRAY)
                     key_d = digit_reader.read_digit(key_tile)
                     key_mean = float(np.mean(key_gray))
 
                     # Read bomb digit
-                    bmb_tile = hud._tile(sf, 14, bmb_row)
+                    bmb_tile = nf.tile(14, bmb_row)
                     bmb_gray = cv2.cvtColor(bmb_tile, cv2.COLOR_BGR2GRAY)
                     bmb_d = digit_reader.read_digit(bmb_tile)
                     bmb_mean = float(np.mean(bmb_gray))
@@ -131,11 +134,9 @@ def main():
                     # Save tiles for the best candidates
                     if score >= 4:
                         for i, col in enumerate([12, 13, 14]):
-                            tile = hud._tile(sf, col, rup_row)
+                            tile = nf.tile(col, rup_row)
                             big = cv2.resize(tile, (64, 64), interpolation=cv2.INTER_NEAREST)
                             cv2.imwrite(f"{outdir}/t{ts}_dx{dx}dy{dy_test}_c{col}.png", big)
-
-                    hud.clear_stream_source()
 
 
 if __name__ == "__main__":

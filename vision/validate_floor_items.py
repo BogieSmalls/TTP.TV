@@ -26,6 +26,7 @@ from detector.item_reader import ItemReader
 from detector.floor_item_detector import FloorItemDetector
 from detector.screen_classifier import ScreenClassifier
 from detector.auto_crop import find_grid_alignment
+from detector.nes_frame import NESFrame
 
 # Thresholds to test
 THRESHOLDS = [0.65, 0.70, 0.75, 0.80]
@@ -127,11 +128,12 @@ def run_detection(detector: FloorItemDetector, snaps: list[dict],
         if img is None:
             continue
         frame = cv2.resize(img, (256, 240), interpolation=cv2.INTER_NEAREST)
+        nf = NESFrame(frame, 1.0, 1.0)
 
         screen_type = snap['screenType']
 
         t0 = time.perf_counter()
-        items = detector.detect(frame, screen_type)
+        items = detector.detect(nf, screen_type)
         dt = (time.perf_counter() - t0) * 1000
         process_times.append(dt)
 
