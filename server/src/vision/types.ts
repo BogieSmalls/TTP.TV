@@ -86,6 +86,8 @@ export interface WebGPUStateUpdate {
   raw: RawGameState;
   stable: StableGameState;
   pending: PendingFieldInfo[];
+  timestamp: number;    // server-side ms epoch when frame was processed
+  frameCount: number;   // cumulative frame count from the tab
 }
 
 export type RacerRole = 'monitored' | 'featured';

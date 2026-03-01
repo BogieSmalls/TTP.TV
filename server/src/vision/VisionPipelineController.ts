@@ -74,6 +74,8 @@ export class VisionPipelineController {
       raw: rawState,
       stable: stableState,
       pending: pipeline.stabilizer.getPendingFields(),
+      timestamp: raw.timestamp,
+      frameCount: raw.frameNumber,
     });
 
     if (events.length > 0) {
