@@ -27,6 +27,8 @@ ws.addEventListener('message', (ev) => handleServerMessage(JSON.parse(ev.data)))
 function handleServerMessage(msg) {
   if (msg.type === 'requestPreview') sendPreview();
   if (msg.type === 'recalibrate') Object.assign(calib, msg.calib);
+  if (msg.type === 'startDebugStream') { debugStreamActive = true; }
+  if (msg.type === 'stopDebugStream') { debugStreamActive = false; }
 }
 
 // ── Video ──────────────────────────────────────────────────────────────────
@@ -35,6 +37,7 @@ video.src = streamUrl;
 video.play().catch(e => console.error('video play failed:', e));
 
 let frameCount = 0;
+let debugStreamActive = false;
 let lastFrameTime = Date.now();
 
 async function onVideoFrame(now, metadata) {
@@ -58,6 +61,9 @@ async function onVideoFrame(now, metadata) {
         roomScores: [],  // populated in Task 13
         floorItems: [],  // populated in Task 14
       }));
+    }
+    if (debugStreamActive) {
+      sendDebugFrame();
     }
   }
   video.requestVideoFrameCallback(onVideoFrame);
@@ -123,6 +129,23 @@ function sendPreview() {
     };
     reader.readAsDataURL(blob);
   }, 'image/jpeg', 0.85);
+}
+
+function sendDebugFrame() {
+  const canvas = document.getElementById('preview');
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, 320, 240);
+  canvas.toBlob(blob => {
+    if (!blob) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result.split(',')[1];
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'debugFrame', racerId, jpeg: base64 }));
+      }
+    };
+    reader.readAsDataURL(blob);
+  }, 'image/jpeg', 0.75);
 }
 
 // Stall detection: re-fetch stream URL if no frames for 5s
