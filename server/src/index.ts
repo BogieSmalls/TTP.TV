@@ -112,6 +112,14 @@ async function main() {
     io.to('vision').emit('vision:events', { racerId, events });
   });
 
+  visionController.onStateUpdate((update) => {
+    io.to('vision').emit('vision:webgpu:state', update);
+  });
+
+  visionWorkerManager.onDebugFrame((racerId, jpeg) => {
+    io.to('vision').emit('vision:webgpu:frame', { racerId, jpeg });
+  });
+
   // ─── Learn Session Manager ───
   const learnManager = new LearnSessionManager(config);
 
@@ -476,6 +484,14 @@ async function main() {
 
     socket.on('disconnect', () => {
       logger.debug(`Socket disconnected: ${socket.id}`);
+    });
+
+    socket.on('vision:startDebugStream', (racerId: string) => {
+      visionWorkerManager.startDebugStream(racerId);
+    });
+
+    socket.on('vision:stopDebugStream', (racerId: string) => {
+      visionWorkerManager.stopDebugStream(racerId);
     });
   });
 

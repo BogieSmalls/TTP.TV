@@ -60,5 +60,10 @@ export function createVisionRoutes(mgr: VisionWorkerManager, controller: VisionP
     res.json({ ok: true });
   });
 
+  // List all racers with active WebGPU tabs
+  router.get('/racers', (_req, res) => {
+    res.json({ racerIds: mgr.getActiveRacerIds() });
+  });
+
   return router;
 }
