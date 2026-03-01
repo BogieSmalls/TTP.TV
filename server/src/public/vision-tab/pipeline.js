@@ -33,7 +33,7 @@ export class VisionPipeline {
     });
 
     // Sampler for texture_external sampling
-    this.sampler = d.createSampler({ magFilter: 'linear', minFilter: 'linear' });
+    this.sampler = d.createSampler({ magFilter: 'nearest', minFilter: 'nearest' });
 
     // Compile shader module once
     const aggModule = d.createShaderModule({ code: AGGREGATE_SHADER });
@@ -239,7 +239,7 @@ export class VisionPipeline {
     const lifeY = c.lifeNesY ?? (DEFAULT_LIFE_NES_Y - (c.gridDy || 0));
     const data = new Float32Array([
       c.cropX, c.cropY, c.scaleX, c.scaleY,
-      c.gridDx, c.gridDy, c.videoWidth, c.videoHeight,
+      c.gridDx ?? 0, c.gridDy ?? 0, c.videoWidth, c.videoHeight,
       lifeX, lifeY, 0, 0,  // pad to 12 floats for 16-byte alignment
     ]);
     this.device.queue.writeBuffer(this.calibBuffer, 0, data);
@@ -369,10 +369,10 @@ export class VisionPipeline {
     pass.setBindGroup(0, makeBindGroup(this.brightnessPipeline));
     pass.dispatchWorkgroups(4, 3); // ceil(64/16)=4, ceil(44/16)=3
 
-    // Red ratio: 8x8 tile at LIFE position
+    // Bright pixels: full "-LIFE-" text (6 tiles = 48x8, dispatched as 6 workgroups of 8x8)
     pass.setPipeline(this.redPipeline);
     pass.setBindGroup(0, makeBindGroup(this.redPipeline));
-    pass.dispatchWorkgroups(1, 1);
+    pass.dispatchWorkgroups(6, 1);
 
     // Gold pixels: triforce region ~85x100 NES pixels
     pass.setPipeline(this.goldPipeline);

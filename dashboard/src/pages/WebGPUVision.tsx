@@ -315,7 +315,7 @@ export default function WebGPUVision() {
         {/* Minimap */}
         <div className="bg-[#1a1a2e] rounded p-2 min-h-0 overflow-auto">
           <WebGPUMinimap
-            mapPosition={stable?.mapPosition ?? 0}
+            mapPosition={stable?.mapPosition ?? -1}
             screenType={stable?.screenType ?? 'unknown'}
             dungeonLevel={stable?.dungeonLevel ?? 0}
           />

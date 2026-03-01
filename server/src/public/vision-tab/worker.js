@@ -481,6 +481,30 @@ function sendDebugFrame() {
     }
   }
 
+  // Draw LIFE shader sample position (cyan overlay — where red_pass is looking)
+  if (calibration) {
+    const vw = video.videoWidth || 1;
+    const vh = video.videoHeight || 1;
+    const mx = 320 / vw;
+    const my = 240 / vh;
+    const gdx = calibration.gridDx ?? 0;
+    const gdy = calibration.gridDy ?? 0;
+    const lnx = calibration.lifeNesX ?? (184 - gdx);
+    const lny = calibration.lifeNesY ?? (16 - gdy);
+    const sx = calibration.cropX + (lnx + gdx) * calibration.scaleX;
+    const sy = calibration.cropY + (lny + gdy) * calibration.scaleY;
+    const sw = 48 * calibration.scaleX;  // 6 tiles wide
+    const sh = 8 * calibration.scaleY;
+    ctx.fillStyle = 'rgba(0, 255, 255, 0.4)';
+    ctx.fillRect(sx * mx, sy * my, sw * mx, sh * my);
+    ctx.strokeStyle = 'cyan';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(sx * mx, sy * my, sw * mx, sh * my);
+    ctx.fillStyle = 'cyan';
+    ctx.font = '8px monospace';
+    ctx.fillText(`LIFE(${Math.round(lnx+gdx)},${Math.round(lny+gdy)})`, sx * mx, sy * my - 3);
+  }
+
   canvas.toBlob(blob => {
     if (!blob) return;
     const reader = new FileReader();

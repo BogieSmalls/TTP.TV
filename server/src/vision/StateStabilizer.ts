@@ -54,24 +54,27 @@ export class StateStabilizer {
     bItem:         new StreakTracker<string | null>(6, null),
     swordLevel:    new StreakTracker<number>(6, 0),
     hasMasterKey:  new StreakTracker<boolean>(6, false),
-    mapPosition:   new StreakTracker<number>(3, -1),
+    mapPosition:   new StreakTracker<number>(8, -1),
     triforce:      new StreakTracker<number>(3, 0),
   };
 
   update(raw: RawGameState): StableGameState {
+    const screenType = this.trackers.screenType.update(raw.screenType);
+    // HUD fields use -1 sentinel from PixelInterpreter when digit NCC scores are low
+    // (subscreen scroll, transitions, etc.) — hold last known value on sentinel
     return {
-      screenType:          this.trackers.screenType.update(raw.screenType),
-      dungeonLevel:        this.trackers.dungeonLevel.update(raw.dungeonLevel),
-      rupees:              this.trackers.rupees.update(raw.rupees),
-      keys:                this.trackers.keys.update(raw.keys),
-      bombs:               this.trackers.bombs.update(raw.bombs),
-      heartsMaxStable:     this.trackers.heartsMax.update(raw.heartsMaxRaw),
-      heartsCurrentStable: this.trackers.heartsCurrent.update(raw.heartsCurrentRaw),
-      bItem:               this.trackers.bItem.update(raw.bItem),
-      swordLevel:          this.trackers.swordLevel.update(raw.swordLevel),
+      screenType,
+      dungeonLevel:        raw.dungeonLevel >= 0 ? this.trackers.dungeonLevel.update(raw.dungeonLevel) : this.trackers.dungeonLevel.value,
+      rupees:              raw.rupees >= 0 ? this.trackers.rupees.update(raw.rupees) : this.trackers.rupees.value,
+      keys:                raw.keys >= 0 ? this.trackers.keys.update(raw.keys) : this.trackers.keys.value,
+      bombs:               raw.bombs >= 0 ? this.trackers.bombs.update(raw.bombs) : this.trackers.bombs.value,
+      heartsMaxStable:     raw.heartsMaxRaw >= 0 ? this.trackers.heartsMax.update(raw.heartsMaxRaw) : this.trackers.heartsMax.value,
+      heartsCurrentStable: raw.heartsCurrentRaw >= 0 ? this.trackers.heartsCurrent.update(raw.heartsCurrentRaw) : this.trackers.heartsCurrent.value,
+      bItem:               raw.bItem !== null ? this.trackers.bItem.update(raw.bItem) : this.trackers.bItem.value,
+      swordLevel:          raw.swordLevel > 0 ? this.trackers.swordLevel.update(raw.swordLevel) : this.trackers.swordLevel.value,
       hasMasterKey:        this.trackers.hasMasterKey.update(raw.hasMasterKey),
-      mapPosition:         this.trackers.mapPosition.update(raw.mapPosition),
-      floorItems:          raw.floorItems, // floor item tracking handled separately
+      mapPosition:         raw.mapPosition >= 0 ? this.trackers.mapPosition.update(raw.mapPosition) : this.trackers.mapPosition.value,
+      floorItems:          raw.floorItems,
       triforceCollected:   this.trackers.triforce.update(raw.triforceCollected),
     };
   }

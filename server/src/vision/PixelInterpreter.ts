@@ -63,23 +63,23 @@ export class PixelInterpreter {
       console.log(`[ncc-diag] rupee=${s(r0)}|${s(r1)}|${s(r2)} key=${s(k0)}|${s(k1)} bomb=${s(b0)}|${s(b1)} dng=${s(dl)} bItem=${bi ? s(bi) : 'null'} sword=${sw ? s(sw) : 'null'}`);
     }
 
-    const screenType = this._classifyScreen(raw);
-    // Only read B-item and sword when HUD counters are visible.
-    // On the file select screen, CODE characters occupy the B/A sprite positions
-    // but no key/bomb digits are present.
+    // Gate ALL HUD readings on digit NCC confidence — when subscreen scrolls over
+    // the HUD area, digit scores drop and we freeze values via -1 sentinel.
     const hudVisible = this._hasConfidentDigits(raw, ['key_0', 'key_1', 'bomb_0', 'bomb_1']);
-    const hearts = this._readHearts(raw);
+    const dungeonLevel = hudVisible ? this._readDungeonLevel(raw) : -1;
+    const screenType = this._classifyScreen(raw, hudVisible, dungeonLevel);
+    const hearts = hudVisible ? this._readHearts(raw) : { current: -1, max: -1 };
     return {
       screenType,
-      dungeonLevel: this._readDungeonLevel(raw),
-      rupees: Math.min(this._readCounter(raw, ['rupee_0', 'rupee_1', 'rupee_2'], RUPEE_MIN_SCORE), 255),
-      keys: this._readCounter(raw, ['key_0', 'key_1'], KEY_MIN_SCORE),
-      bombs: this._readCounter(raw, ['bomb_0', 'bomb_1'], BOMB_MIN_SCORE),
+      dungeonLevel,
+      rupees: hudVisible ? Math.min(this._readCounter(raw, ['rupee_0', 'rupee_1', 'rupee_2'], RUPEE_MIN_SCORE), 255) : -1,
+      keys: hudVisible ? this._readCounter(raw, ['key_0', 'key_1'], KEY_MIN_SCORE) : -1,
+      bombs: hudVisible ? this._readCounter(raw, ['bomb_0', 'bomb_1'], BOMB_MIN_SCORE) : -1,
       heartsCurrentRaw: hearts.current,
       heartsMaxRaw: hearts.max,
       bItem: hudVisible ? this._readItem(raw, 'b_item') : null,
       swordLevel: hudVisible ? this._readSwordLevel(raw) : 0,
-      hasMasterKey: this._checkMasterKey(raw),
+      hasMasterKey: hudVisible ? this._checkMasterKey(raw) : false,
       mapPosition: this._bestRoom(raw),
       floorItems: raw.floorItems.map(fi => ({
         name: TEMPLATE_NAMES['drops_8x16']?.[fi.templateIdx] ?? 'unknown',
@@ -92,16 +92,17 @@ export class PixelInterpreter {
     };
   }
 
-  private _classifyScreen(raw: RawPixelState): RawGameState['screenType'] {
+  private _classifyScreen(raw: RawPixelState, hudVisible: boolean, dungeonLevel: number): RawGameState['screenType'] {
     if (raw.gameBrightness < 8) return 'transition';
-    if (raw.redRatioAtLife > 16) {
-      // LIFE text present → gameplay screen
-      if (raw.gameBrightness < 35) return 'dungeon';
+    const lifeVisible = raw.redRatioAtLife > 16;
+    if (lifeVisible || hudVisible) {
+      // Gameplay screen — use dungeonLevel as definitive dungeon signal
+      if (dungeonLevel > 0) return 'dungeon';
       if (raw.gameBrightness < 55) return 'cave';
       return 'overworld';
     }
-    if (raw.gameBrightness < 30) return 'subscreen';
-    return 'unknown';
+    // No LIFE text and no HUD digits → subscreen or other non-gameplay
+    return 'subscreen';
   }
 
   private _bestDigit(raw: RawPixelState, tileId: string): { digit: string; score: number } {
@@ -170,32 +171,15 @@ export class PixelInterpreter {
     }
 
     if (dot) {
-      // Triangulate: find best NCC match within ±1 of minimap dot
-      let bestIdx = -1;
-      let bestScore = -Infinity;
-      for (let i = 0; i < raw.roomScores.length; i++) {
-        const col = (i % 16) + 1;
-        const row = Math.floor(i / 16) + 1;
-        if (Math.abs(col - dot.col) <= 1 && Math.abs(row - dot.row) <= 1) {
-          if (raw.roomScores[i] > bestScore) {
-            bestScore = raw.roomScores[i];
-            bestIdx = i;
-          }
-        }
-      }
-      return bestScore >= ROOM_MATCH_THRESHOLD ? bestIdx : -1;
+      // Accept only exact dot position — no ±1 fallback (eliminates neighbor
+      // false positives during screen scrolls)
+      const exactIdx = (dot.row - 1) * 16 + (dot.col - 1);
+      const exactScore = raw.roomScores[exactIdx] ?? -1;
+      return exactScore >= ROOM_MATCH_THRESHOLD ? exactIdx : -1;
     }
 
-    // Fallback: no minimap signal → pure NCC (existing behavior)
-    let bestIdx = 0;
-    let bestScore = -Infinity;
-    for (let i = 0; i < raw.roomScores.length; i++) {
-      if (raw.roomScores[i] > bestScore) {
-        bestScore = raw.roomScores[i];
-        bestIdx = i;
-      }
-    }
-    return bestScore >= ROOM_MATCH_THRESHOLD ? bestIdx : -1;
+    // No minimap dot → no position update (reject transitions/subscreens)
+    return -1;
   }
 
   private _bestTemplate(raw: RawPixelState, tileId: string, group: string): { name: string; score: number } | null {

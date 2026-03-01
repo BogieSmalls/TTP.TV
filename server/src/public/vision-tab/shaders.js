@@ -4,6 +4,7 @@ struct Calibration {
   scale_x: f32, scale_y: f32,
   grid_dx: f32, grid_dy: f32,
   video_w: f32, video_h: f32,
+  life_nes_x: f32, life_nes_y: f32,  // LIFE text position from landmarks (canonical, pre-grid-offset)
 }
 
 struct AggregateResult {
@@ -36,17 +37,18 @@ fn brightness_pass(@builtin(global_invocation_id) gid: vec3<u32>) {
   atomicAdd(&result.brightness, luma);
 }
 
-// Pass B: red ratio at LIFE text tile (NES col 22, row 5 = x=176, y=40)
+// Pass B: bright pixels across full "-LIFE-" / "-ROAR-" text (6 tiles = 48×8 NES pixels)
 @compute @workgroup_size(8, 8)
 fn red_pass(@builtin(global_invocation_id) gid: vec3<u32>) {
-  if gid.x >= 8u || gid.y >= 8u { return; }
-  let nes_x = 176.0 + f32(gid.x);
-  let nes_y = 40.0 + f32(gid.y);
+  if gid.x >= 48u || gid.y >= 8u { return; }
+  let nes_x = calib.life_nes_x + f32(gid.x);
+  let nes_y = calib.life_nes_y + f32(gid.y);
   let uv = nes_to_uv(nes_x, nes_y);
   let c = textureSampleBaseClampToEdge(source, src_sampler, uv);
-  // red ratio: r > 50/255 AND r > 2*g AND r > 2*b
-  let is_red = select(0, 1000, c.r > 0.196 && c.r > c.g * 2.0 && c.r > c.b * 2.0);
-  atomicAdd(&result.red_at_life, is_red);
+  // brightness: max channel > 100/255 — LIFE/ROAR text is bright against black HUD
+  let max_ch = max(max(c.r, c.g), c.b);
+  let is_bright = select(0, 1000, max_ch > 0.39);
+  atomicAdd(&result.red_at_life, is_bright);
 }
 
 // Pass C: gold pixels in triforce region (subscreen area y=100-200, x=85-170)
@@ -281,6 +283,7 @@ const MAX_TEMPLATES: u32 = 32u;
 struct Calibration {
   crop_x: f32, crop_y: f32, scale_x: f32, scale_y: f32,
   grid_dx: f32, grid_dy: f32, video_w: f32, video_h: f32,
+  life_nes_x: f32, life_nes_y: f32,
 }
 struct TileDef {
   nes_x: f32, nes_y: f32,
@@ -297,7 +300,6 @@ struct NccResults { scores: array<f32>, }
 @group(0) @binding(5) var<uniform> calib: Calibration;
 @group(0) @binding(6) var<storage, read_write> results: NccResults;
 
-var<workgroup> tile_px: array<f32, 64>;
 var<workgroup> reduction: array<f32, 64>;
 
 fn nes_to_uv(nx: f32, ny: f32) -> vec2<f32> {
@@ -307,9 +309,21 @@ fn nes_to_uv(nx: f32, ny: f32) -> vec2<f32> {
   );
 }
 
+// Parallel reduction helper — reduces 64 workgroup values to a single sum in slot 0.
+fn wg_reduce(lid: u32) {
+  workgroupBarrier();
+  for (var s = 32u; s > 0u; s >>= 1u) {
+    if lid < s { reduction[lid] += reduction[lid + s]; }
+    workgroupBarrier();
+  }
+}
+
 // Each workgroup handles one (tile_idx, template_idx) pair.
-// Workgroup size 64 = one thread per pixel in an 8x8 region.
-// For 8x16 tiles, only the top 8x8 half is sampled (sufficient for NCC discrimination).
+// Workgroup size 64 = one thread per pixel in an 8x8 block.
+// For 8x16 tiles each thread handles 2 vertically adjacent pixels (row Y and Y+8).
+//
+// Sub-pixel search: tests a 3x3 grid of offsets (±1 NES pixel in X and Y) to
+// handle landmark-to-pixel alignment uncertainty. Keeps the best NCC score.
 @compute @workgroup_size(64)
 fn ncc_main(
   @builtin(local_invocation_index) lid: u32,
@@ -322,61 +336,77 @@ fn ncc_main(
 
   let local_x = lid % 8u;
   let local_y = lid / 8u;
+  let is_tall = def.height == 16u;
+  let n_pixels = select(64.0, 128.0, is_tall);
 
-  // Sample source pixel at this tile position
-  let nx = def.nes_x + f32(local_x);
-  let ny = def.nes_y + f32(local_y);
-  let uv = nes_to_uv(nx, ny);
-  let color = textureSampleBaseClampToEdge(source, src_sampler, uv);
-  // Max-channel grayscale (matches Python digit_reader: np.max(tile, axis=2))
-  tile_px[lid] = max(max(color.r, color.g), color.b);
-  workgroupBarrier();
-
-  // Parallel sum reduction for mean
-  reduction[lid] = tile_px[lid];
-  workgroupBarrier();
-  for (var stride = 32u; stride > 0u; stride >>= 1u) {
-    if lid < stride { reduction[lid] += reduction[lid + stride]; }
-    workgroupBarrier();
-  }
-  let src_mean = reduction[0] / 64.0;
-  workgroupBarrier();
-
-  // Variance for std
-  let centered = tile_px[lid] - src_mean;
-  reduction[lid] = centered * centered;
-  workgroupBarrier();
-  for (var stride = 32u; stride > 0u; stride >>= 1u) {
-    if lid < stride { reduction[lid] += reduction[lid + stride]; }
-    workgroupBarrier();
-  }
-  let src_std = sqrt(max(reduction[0] / 64.0, 1e-6));
-  workgroupBarrier();
-
-  // Load template pixel (pre-normalized: mean=0, std=1 from server)
-  var tmpl_val: f32;
-  if def.width == 8u && def.height == 8u {
-    tmpl_val = textureLoad(templates_8x8,
-                           vec2<i32>(i32(local_x), i32(local_y)),
-                           i32(def.tmpl_offset + tmpl_idx), 0).r;
+  // --- Load template pixels once (pre-normalized: mean=0, std=1 from gpu.js) ---
+  var tmpl0: f32;
+  var tmpl1: f32 = 0.0;
+  if !is_tall {
+    tmpl0 = textureLoad(templates_8x8,
+                         vec2<i32>(i32(local_x), i32(local_y)),
+                         i32(def.tmpl_offset + tmpl_idx), 0).r;
   } else {
-    tmpl_val = textureLoad(templates_8x16,
-                           vec2<i32>(i32(local_x), i32(local_y)),
-                           i32(def.tmpl_offset + tmpl_idx), 0).r;
+    tmpl0 = textureLoad(templates_8x16,
+                         vec2<i32>(i32(local_x), i32(local_y)),
+                         i32(def.tmpl_offset + tmpl_idx), 0).r;
+    tmpl1 = textureLoad(templates_8x16,
+                         vec2<i32>(i32(local_x), i32(local_y + 8u)),
+                         i32(def.tmpl_offset + tmpl_idx), 0).r;
   }
 
-  // Cross-correlation (centered source x pre-normalized template)
-  reduction[lid] = centered * tmpl_val;
-  workgroupBarrier();
-  for (var stride = 32u; stride > 0u; stride >>= 1u) {
-    if lid < stride { reduction[lid] += reduction[lid + stride]; }
-    workgroupBarrier();
+  // --- Search ±1 NES pixel in X and Y (9 offsets) ---
+  var best_ncc: f32 = -1.0;
+
+  for (var ody: i32 = -1; ody <= 1; ody++) {
+    for (var odx: i32 = -1; odx <= 1; odx++) {
+      let off_x = f32(odx);
+      let off_y = f32(ody);
+
+      // Sample source pixels at offset position
+      let nx = def.nes_x + f32(local_x) + off_x;
+      let ny0 = def.nes_y + f32(local_y) + off_y;
+      let uv0 = nes_to_uv(nx, ny0);
+      let c0 = textureSampleBaseClampToEdge(source, src_sampler, uv0);
+      let px0 = max(max(c0.r, c0.g), c0.b);
+
+      var px1: f32 = 0.0;
+      if is_tall {
+        let ny1 = def.nes_y + f32(local_y + 8u) + off_y;
+        let uv1 = nes_to_uv(nx, ny1);
+        let c1 = textureSampleBaseClampToEdge(source, src_sampler, uv1);
+        px1 = max(max(c1.r, c1.g), c1.b);
+      }
+
+      // Mean reduction
+      reduction[lid] = px0 + select(0.0, px1, is_tall);
+      wg_reduce(lid);
+      let src_mean = reduction[0] / n_pixels;
+      workgroupBarrier();
+
+      // Variance reduction
+      let d0 = px0 - src_mean;
+      let d1 = px1 - src_mean;
+      reduction[lid] = d0 * d0 + select(0.0, d1 * d1, is_tall);
+      wg_reduce(lid);
+      let src_std = sqrt(max(reduction[0] / n_pixels, 1e-6));
+      workgroupBarrier();
+
+      // Cross-correlation
+      reduction[lid] = d0 * tmpl0 + select(0.0, d1 * tmpl1, is_tall);
+      wg_reduce(lid);
+
+      if lid == 0u {
+        let ncc = reduction[0] / (src_std * n_pixels);
+        best_ncc = max(best_ncc, ncc);
+      }
+      workgroupBarrier();
+    }
   }
 
-  // NCC score written by thread 0 only
+  // Write best score across all 9 offsets
   if lid == 0u {
-    let ncc = reduction[0] / (src_std * 64.0);
-    results.scores[tile_idx * MAX_TEMPLATES + tmpl_idx] = ncc;
+    results.scores[tile_idx * MAX_TEMPLATES + tmpl_idx] = best_ncc;
   }
 }
 `;
