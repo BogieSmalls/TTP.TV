@@ -10,6 +10,7 @@ export class VisionWorkerManager {
   private onStateCallback: ((state: RawPixelState) => void) | null = null;
   private onDebugFrameCallback: ((racerId: string, jpeg: string) => void) | null = null;
   private onRoomSnapshotCallback: ((racerId: string, dungeonLevel: number, mapPosition: number, jpeg: string) => void) | null = null;
+  private onVodEndedCallback: ((racerId: string) => void) | null = null;
   private roomSnapshots = new Map<string, Map<string, string>>();
   private monitoredRacers = new Set<string>();
   private featuredRacers = new Set<string>();
@@ -45,6 +46,10 @@ export class VisionWorkerManager {
 
   onRoomSnapshot(cb: (racerId: string, dungeonLevel: number, mapPosition: number, jpeg: string) => void): void {
     this.onRoomSnapshotCallback = cb;
+  }
+
+  onVodEnded(cb: (racerId: string) => void): void {
+    this.onVodEndedCallback = cb;
   }
 
   async addRacer(config: RacerConfig): Promise<void> {
@@ -106,6 +111,8 @@ export class VisionWorkerManager {
             if (this.roomSnapshots.get(racerId)!.has(key)) return;
             this.roomSnapshots.get(racerId)!.set(key, msg.jpeg);
             this.onRoomSnapshotCallback?.(racerId, msg.dungeonLevel, msg.mapPosition, msg.jpeg);
+          } else if (msg.type === 'vodEnded') {
+            this.onVodEndedCallback?.(racerId);
           } else if (msg.type === 'heartbeat') {
             // intentionally ignored — tab keepalive, not game state
           } else if (msg.type === 'rawState') {
@@ -179,6 +186,10 @@ export class VisionWorkerManager {
   stopDebugStream(racerId: string): void {
     this.pendingDebugStreams.delete(racerId);
     this.sendToTab(racerId, { type: 'stopDebugStream' });
+  }
+
+  setPlaybackRate(racerId: string, rate: number): void {
+    this.sendToTab(racerId, { type: 'setPlaybackRate', rate });
   }
 
   getActiveRacerIds(): string[] {
