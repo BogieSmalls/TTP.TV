@@ -107,8 +107,7 @@ export default function AppSidebar() {
         <SidebarSection title="Train" collapsed={collapsed}>
           <SidebarLink to="/learn" icon={GraduationCap} label="Learn Mode" collapsed={collapsed} />
           <SidebarLink to="/knowledge" icon={BookOpen} label="Knowledge Base" collapsed={collapsed} />
-          <SidebarLink to="/vision" icon={Eye} label="Vision Lab" collapsed={collapsed} />
-          <SidebarLink to="/vision/webgpu" icon={Eye} label="WebGPU Vision" collapsed={collapsed} />
+          <SidebarLink to="/vision" icon={Eye} label="Vision" collapsed={collapsed} />
         </SidebarSection>
 
         <SidebarSection title="System" collapsed={collapsed}>
