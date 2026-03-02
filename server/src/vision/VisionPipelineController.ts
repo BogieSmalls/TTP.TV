@@ -136,6 +136,9 @@ export class VisionPipelineController {
     pipeline.prevMapPosition = stableState.mapPosition;
     pipeline.prevDungeonLevel = stableState.dungeonLevel;
 
+    // Update sword level from stable state
+    pipeline.playerItems.updateSwordLevel(stableState.swordLevel);
+
     // Cache stable state for REST endpoint
     this.manager.cacheState(raw.racerId, stableState);
 
@@ -146,6 +149,10 @@ export class VisionPipelineController {
       pending: pipeline.stabilizer.getPendingFields(),
       timestamp: raw.timestamp,
       frameCount: raw.frameNumber,
+      items: pipeline.playerItems.getItems(),
+      swordLevel: pipeline.playerItems.sword_level,
+      arrowsLevel: pipeline.playerItems.arrows_level,
+      triforcePieces: pipeline.triforce.triforceState,
       diag: {
         brightness: raw.gameBrightness,
         redAtLife: raw.redRatioAtLife,
