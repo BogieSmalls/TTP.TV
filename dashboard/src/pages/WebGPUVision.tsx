@@ -35,6 +35,10 @@ interface WebGPUStateUpdate {
   pending: PendingFieldInfo[];
   timestamp: number;
   frameCount: number;
+  items?: Record<string, boolean>;
+  swordLevel?: number;
+  arrowsLevel?: number;
+  triforcePieces?: boolean[];
   diag?: { brightness: number; redAtLife: number; goldPixels: number };
 }
 
@@ -51,12 +55,44 @@ function HeartDisplay({ current, max }: { current: number; max: number }) {
   return <span>{current}/{max}</span>;
 }
 
-function TriforceDisplay({ value }: { value: number }) {
-  // value is a count (0-8), not a bitmask
+function TriforceDisplay({ pieces }: { pieces: boolean[] }) {
   return (
-    <span>
-      {'■'.repeat(Math.min(value, 8))}{'□'.repeat(Math.max(0, 8 - value))}
+    <span className="font-mono tracking-wider">
+      {pieces.map((has, i) => (
+        <span key={i} className={has ? 'text-yellow-400' : 'text-gray-600'}>
+          {i + 1}
+        </span>
+      ))}
     </span>
+  );
+}
+
+const ITEMS = [
+  'boomerang', 'magical_boomerang', 'bow', 'silver_arrows',
+  'blue_candle', 'red_candle', 'recorder', 'food',
+  'letter', 'potion_red', 'potion_blue', 'magic_rod',
+  'raft', 'ladder', 'book', 'ring_blue', 'ring_red',
+  'power_bracelet', 'magic_shield', 'magic_key',
+];
+
+function ItemGrid({ items }: { items: Record<string, boolean> }) {
+  return (
+    <div className="grid grid-cols-5 gap-1">
+      {ITEMS.map(id => {
+        const has = items[id] === true;
+        return (
+          <span
+            key={id}
+            className={`text-[10px] px-1 py-0.5 rounded text-center truncate ${
+              has ? 'bg-green-900 text-green-300' : 'bg-gray-800 text-gray-600'
+            }`}
+            title={id}
+          >
+            {id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).slice(0, 8)}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
@@ -82,6 +118,8 @@ export default function WebGPUVision() {
   const frameTimesRef = useRef<number[]>([]);
   const prevRacerRef = useRef<string | null>(null);
   const [dungeonRoomImages, setDungeonRoomImages] = useState<Map<number, Map<number, string>>>(new Map());
+  const [items, setItems] = useState<Record<string, boolean>>({});
+  const [triforcePieces, setTriforcePieces] = useState<boolean[]>(new Array(8).fill(false));
 
   // Fetch active racers on mount
   useEffect(() => {
@@ -117,6 +155,8 @@ export default function WebGPUVision() {
     setStable(update.stable);
     setPending(update.pending);
     if (update.diag) setDiag(update.diag);
+    if (update.items) setItems(update.items);
+    if (update.triforcePieces) setTriforcePieces(update.triforcePieces);
     const now = Date.now();
     setLatency(now - update.timestamp);
     setFrameCount(update.frameCount);
@@ -296,7 +336,7 @@ export default function WebGPUVision() {
             <span className="text-gray-400">dungeon</span>
             <span>{stable?.dungeonLevel ?? '—'}</span>
             <span className="text-gray-400">triforce</span>
-            <span>{stable ? <TriforceDisplay value={stable.triforceCollected} /> : '—'}</span>
+            <span>{stable ? <TriforceDisplay pieces={triforcePieces} /> : '—'}</span>
           </div>
           {/* Pending fields — fixed height to prevent layout jitter (up to ~7 fields) */}
           <div className="mt-2 pt-2 border-t border-gray-700 min-h-[6.5rem]">
@@ -314,6 +354,23 @@ export default function WebGPUVision() {
             ) : (
               <div className="text-xs text-gray-600">no pending changes</div>
             )}
+          </div>
+        </div>
+      </div>
+
+      {/* Item tracker + triforce pieces */}
+      <div className="bg-[#1a1a2e] rounded p-3 text-sm">
+        <div className="flex gap-4">
+          <div className="flex-1">
+            <div className="text-xs font-semibold text-gray-400 mb-2">ITEMS</div>
+            <ItemGrid items={items} />
+          </div>
+          <div className="shrink-0">
+            <div className="text-xs font-semibold text-gray-400 mb-2">TRIFORCE</div>
+            <TriforceDisplay pieces={triforcePieces} />
+            <div className="text-xs text-gray-500 mt-1">
+              sword: {stable ? swordLabel(stable.swordLevel) : '—'}
+            </div>
           </div>
         </div>
       </div>
