@@ -202,7 +202,8 @@ export class TwitchApiClient {
 
   /**
    * Find the most recent Zelda VOD for a Twitch channel.
-   * Returns null if no VODs found or no matching VOD.
+   * Searches up to 100 recent VODs with tiered keyword matching.
+   * Returns null if no VODs found.
    */
   async findZeldaVod(twitchLogin: string): Promise<TwitchVideo | null> {
     // Strip full URL to just login name if needed
@@ -219,24 +220,38 @@ export class TwitchApiClient {
 
     const userId = users[0].id;
 
-    // 2. Fetch recent VODs
-    const videos = await this.getVideosForUser(userId, 20);
+    // 2. Fetch up to 100 recent VODs to search deeper for Zelda content
+    const videos = await this.getVideosForUser(userId, 100);
     if (videos.length === 0) {
       logger.debug(`[TwitchApi] No VODs for ${twitchLogin}`);
       return null;
     }
 
-    // 3. Filter for Zelda-related titles
-    const zeldaKeywords = /zelda|z1r|randomizer|rando/i;
-    const zeldaVod = videos.find((v) => zeldaKeywords.test(v.title));
+    // 3. Tiered keyword matching — strong matches first, then weaker
+    const strongMatch = /zelda|z1r|legend\s*of\s*z/i;
+    const mediumMatch = /\brando\b|\brandomizer\b|\bLoZ\b/i;
+    const weakMatch = /\bNES\b.*\brand/i;
 
-    if (zeldaVod) {
-      logger.debug(`[TwitchApi] Found Zelda VOD for ${twitchLogin}: "${zeldaVod.title}"`);
-      return zeldaVod;
+    const strong = videos.find((v) => strongMatch.test(v.title));
+    if (strong) {
+      logger.debug(`[TwitchApi] Found Zelda VOD for ${twitchLogin} (strong): "${strong.title}"`);
+      return strong;
+    }
+
+    const medium = videos.find((v) => mediumMatch.test(v.title));
+    if (medium) {
+      logger.debug(`[TwitchApi] Found Zelda VOD for ${twitchLogin} (medium): "${medium.title}"`);
+      return medium;
+    }
+
+    const weak = videos.find((v) => weakMatch.test(v.title));
+    if (weak) {
+      logger.debug(`[TwitchApi] Found Zelda VOD for ${twitchLogin} (weak): "${weak.title}"`);
+      return weak;
     }
 
     // 4. Fallback: most recent VOD (human will verify from screenshots)
-    logger.debug(`[TwitchApi] No Zelda title match for ${twitchLogin}, falling back to most recent VOD`);
+    logger.debug(`[TwitchApi] No Zelda title match in ${videos.length} VODs for ${twitchLogin}, falling back to most recent`);
     return videos[0];
   }
 
