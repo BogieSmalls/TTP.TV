@@ -72,6 +72,9 @@ export class RaceAnalyzerSession {
     this.result = null;
     this.state = 'running';
 
+    // TODO: accept calibration from API caller once crop profile lookup is wired in.
+    // Empty calibration triggers the worker's auto-calibration scan, which is
+    // sufficient for VODs where the NES game fills most of the frame.
     await this.manager.addRacer({
       racerId: this.internalRacerId,
       streamUrl: options.vodUrl,

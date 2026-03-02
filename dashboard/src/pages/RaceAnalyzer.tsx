@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { useSocket, useSocketEvent } from '../hooks/useSocket.js';
+import { useSocketEvent } from '../hooks/useSocket.js';
 
 interface GameEvent {
   type: string;
@@ -69,7 +69,6 @@ function swordLabel(level: number): string {
 }
 
 export default function RaceAnalyzer() {
-  const socket = useSocket();
   const [vodUrl, setVodUrl] = useState('');
   const [racerId, setRacerId] = useState('analyzer');
   const [startOffset, setStartOffset] = useState('');
@@ -126,7 +125,11 @@ export default function RaceAnalyzer() {
   }
 
   async function handleStop() {
-    await fetch('/api/analyzer/stop', { method: 'POST' });
+    try {
+      await fetch('/api/analyzer/stop', { method: 'POST' });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
     setIsRunning(false);
   }
 

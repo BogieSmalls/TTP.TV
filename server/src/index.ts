@@ -136,6 +136,7 @@ async function main() {
     io.to('vision').emit('vision:webgpu:state', update);
     // Feed analyzer if this racer belongs to the analyzer session
     if (update.racerId === analyzerSession.getInternalRacerId()) {
+      // Approximate VOD time from frame count assuming 30fps pipeline output
       analyzerSession.feedState(update.stable, update.items, update.frameCount / 30);
     }
   });
