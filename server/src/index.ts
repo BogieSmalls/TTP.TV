@@ -35,8 +35,10 @@ import { VodIngestionService } from './knowledge/VodIngestionService.js';
 import { RaceHistoryImporter } from './knowledge/RaceHistoryImporter.js';
 import { VisionWorkerManager } from './vision/VisionWorkerManager.js';
 import { VisionPipelineController } from './vision/VisionPipelineController.js';
+import { RaceAnalyzerSession } from './vision/RaceAnalyzerSession.js';
 import { templateRouter } from './vision/templateServer.js';
 import { createVisionRoutes } from './api/visionEndpoints.js';
+import { createAnalyzerRoutes } from './api/analyzerRoutes.js';
 
 async function main() {
   // ─── Augment PATH with tool directories ───
@@ -107,9 +109,23 @@ async function main() {
 
   // ─── Vision Pipeline Controller (RawPixelState → events) ───
   const visionController = new VisionPipelineController(visionWorkerManager);
+
+  // ─── Race Analyzer Session ───
+  const analyzerSession = new RaceAnalyzerSession(visionWorkerManager, visionController);
+  analyzerSession.onProgress((progress) => {
+    io.to('vision').emit('analyzer:progress', progress);
+  });
+  analyzerSession.onComplete((result) => {
+    io.to('vision').emit('analyzer:complete', { racerId: result.racerId, result });
+  });
+
   visionController.onGameEvents((racerId, events) => {
     io.to('overlay').emit('vision:events', { racerId, events });
     io.to('vision').emit('vision:events', { racerId, events });
+    // Feed analyzer if this racer belongs to the analyzer session
+    if (racerId === analyzerSession.getInternalRacerId()) {
+      analyzerSession.feedEvents(events);
+    }
   });
 
   visionController.onStateUpdate((update) => {
@@ -118,6 +134,10 @@ async function main() {
       logger.info(`[vision:emit] state update for ${update.racerId} frame=${update.frameCount} screen=${update.stable.screenType} clients=${visionRoom?.size ?? 0}`);
     }
     io.to('vision').emit('vision:webgpu:state', update);
+    // Feed analyzer if this racer belongs to the analyzer session
+    if (update.racerId === analyzerSession.getInternalRacerId()) {
+      analyzerSession.feedState(update.stable, update.items, update.frameCount / 30);
+    }
   });
 
   visionWorkerManager.onDebugFrame((racerId, jpeg) => {
@@ -126,6 +146,12 @@ async function main() {
 
   visionWorkerManager.onRoomSnapshot((racerId, dungeonLevel, mapPosition, jpeg) => {
     io.to('vision').emit('vision:roomSnapshot', { racerId, dungeonLevel, mapPosition, jpeg });
+  });
+
+  visionWorkerManager.onVodEnded((racerId) => {
+    if (racerId === analyzerSession.getInternalRacerId()) {
+      analyzerSession.handleVodEnded();
+    }
   });
 
   // ─── Learn Session Manager ───
@@ -393,6 +419,9 @@ async function main() {
 
   // Vision preview/debug/state REST endpoints (operator tooling)
   app.use('/api/vision', createVisionRoutes(visionWorkerManager, visionController, cropProfileService, db));
+
+  // Race Analyzer endpoints
+  app.use('/api/analyzer', createAnalyzerRoutes(analyzerSession));
 
   // API routes
   const apiRouter = createApiRoutes({
