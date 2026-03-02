@@ -98,6 +98,10 @@ export interface WebGPUStateUpdate {
   pending: PendingFieldInfo[];
   timestamp: number;    // server-side ms epoch when frame was processed
   frameCount: number;   // cumulative frame count from the tab
+  items: Record<string, boolean>;
+  swordLevel: number;
+  arrowsLevel: number;
+  triforcePieces: boolean[];
   // Raw aggregate values for diagnostics
   diag?: { brightness: number; redAtLife: number; goldPixels: number };
 }
