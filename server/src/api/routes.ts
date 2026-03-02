@@ -529,82 +529,6 @@ export function createApiRoutes(ctx: RouteContext): Router {
 
   // ─── Vision State ───
 
-  router.post('/vision/:racerId', (req, res) => {
-    const { racerId } = req.params;
-    const gameState = req.body;
-
-    // Merge into cache and extract one-shot game events
-    const { state: fullState, events } = ctx.visionManager.updateState(racerId, gameState);
-    ctx.io.to('overlay').emit('vision:update', { racerId, ...fullState });
-    ctx.io.to('vision').emit('vision:raw', { racerId, ...fullState });
-
-    // Broadcast game events on a separate channel
-    if (events.length > 0) {
-      ctx.io.to('overlay').emit('vision:events', { racerId, events });
-      ctx.io.to('vision').emit('vision:events', { racerId, events });
-    }
-
-    // Feed commentary engine with state + events
-    ctx.commentaryEngine.onVisionUpdate(racerId, fullState as Record<string, unknown>, events);
-
-    // Feed shared map state
-    const screenType = fullState.screen_type as string;
-    const mapPos = fullState.map_position as number | undefined;
-    const dungeonLevel = fullState.dungeon_level as number | undefined;
-
-    if (mapPos != null && (screenType === 'overworld' || screenType === 'dungeon' || screenType === 'cave')) {
-      if (screenType === 'overworld') {
-        const col = (mapPos % 16) + 1;
-        const row = Math.floor(mapPos / 16) + 1;
-        ctx.seedMapState.updatePosition(racerId, col, row, screenType);
-      } else if (dungeonLevel && dungeonLevel > 0) {
-        const col = (mapPos % 8) + 1;
-        const row = Math.floor(mapPos / 8) + 1;
-        ctx.seedMapState.updatePosition(racerId, col, row, screenType, dungeonLevel);
-      }
-    }
-
-    // Pin dungeon markers from game events
-    for (const evt of events) {
-      if ((evt as any).event === 'dungeon_first_visit' && mapPos != null) {
-        const dl = (evt as any).dungeon_level as number;
-        const owPos = fullState.last_overworld_position as number | undefined;
-        if (owPos != null) {
-          const col = (owPos % 16) + 1;
-          const row = Math.floor(owPos / 16) + 1;
-          ctx.seedMapState.addDungeonMarker(racerId, col, row, dl);
-        }
-      }
-    }
-
-    // Feed auto-feature engine with game events
-    for (const evt of events) {
-      const triforceArr = fullState.triforce as boolean[] | undefined;
-      const triforceCount = triforceArr ? triforceArr.filter(Boolean).length : undefined;
-      ctx.autoFeature.onGameEvent(racerId, (evt as any).event, triforceCount);
-    }
-
-    // Feed seed item tracker
-    ctx.seedItemTracker.processVisionUpdate(racerId, fullState as Record<string, unknown>);
-
-    // Persist to SQLite vision log
-    const raceId = ctx.raceOrchestrator.getActiveRace()?.raceDbId
-      || ctx.vodRaceOrchestrator.getStatus().raceId
-      || 'unknown';
-    ctx.visionLogDb.insert(raceId, racerId, fullState as Record<string, unknown>);
-
-    // Record key game events to race history
-    if (raceId !== 'unknown') {
-      for (const evt of events) {
-        const evtType = (evt as any).event as string;
-        const desc = (evt as any).description as string | undefined;
-        ctx.raceHistory.recordEvent(raceId, racerId, evtType, desc ?? evtType).catch(() => {});
-      }
-    }
-
-    res.status(204).send();
-  });
-
   // Static routes must come before parameterized routes
   router.get('/vision/seed-items', (_req, res) => {
     res.json(ctx.seedItemTracker.getState());
@@ -613,11 +537,6 @@ export function createApiRoutes(ctx: RouteContext): Router {
   router.get('/vision/:racerId', (req, res) => {
     const state = ctx.visionManager.getState(req.params.racerId);
     res.json({ racerId: req.params.racerId, state });
-  });
-
-  router.get('/vision-py/:racerId/frame', (req, res) => {
-    const framePath = resolve(import.meta.dirname, '../../../data', `vision-frame-${req.params.racerId}.jpg`);
-    res.sendFile(framePath, (err) => { if (err) res.status(404).end(); });
   });
 
   router.get('/vision', (_req, res) => {
@@ -659,33 +578,6 @@ export function createApiRoutes(ctx: RouteContext): Router {
   router.get('/vision/:racerId/verification', (req, res) => {
     const v = ctx.visionManager.getVerificationStatus(req.params.racerId);
     res.json({ racerId: req.params.racerId, verification: v });
-  });
-
-  // ─── Vision VOD (ad-hoc VOD → VisionLab) ───
-
-  router.post('/vision-vod/start', async (req, res) => {
-    const { racerId, vodUrl, profileId, startTime } = req.body as { racerId?: string; vodUrl?: string; profileId?: string; startTime?: string };
-    if (!racerId || !vodUrl || !profileId) {
-      res.status(400).json({ error: 'racerId, vodUrl, and profileId are required' });
-      return;
-    }
-    try {
-      await ctx.visionManager.startVisionVod(racerId, vodUrl, profileId, startTime);
-      res.json({ status: 'started', racerId, vodUrl });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: msg });
-    }
-  });
-
-  router.post('/vision-vod/stop', async (req, res) => {
-    const { racerId } = req.body as { racerId?: string };
-    if (!racerId) {
-      res.status(400).json({ error: 'racerId is required' });
-      return;
-    }
-    await ctx.visionManager.stopVision(racerId);
-    res.json({ status: 'stopped', racerId });
   });
 
   // ─── Race Management (sub-router) ───
