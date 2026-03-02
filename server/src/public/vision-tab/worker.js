@@ -52,6 +52,10 @@ function handleServerMessage(msg) {
   if (msg.type === 'startDebugStream') { debugStreamActive = true; }
   if (msg.type === 'stopDebugStream') { debugStreamActive = false; }
   if (msg.type === 'captureViewport') captureViewport(msg.dungeonLevel, msg.mapPosition);
+  if (msg.type === 'setPlaybackRate') {
+    video.playbackRate = msg.rate;
+    console.log(`[${racerId}] playbackRate set to ${msg.rate}`);
+  }
 }
 
 // Off-screen canvas for viewport capture (96×66 for dungeon room snapshots)
@@ -94,6 +98,13 @@ function captureViewport(dungeonLevel, mapPosition) {
 const video = document.getElementById('video');
 video.src = streamUrl;
 video.play().catch(e => console.error('video play failed:', e));
+
+video.addEventListener('ended', () => {
+  console.log(`[${racerId}] video ended`);
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'vodEnded', racerId }));
+  }
+});
 
 let frameCount = 0;
 let debugStreamActive = false;
