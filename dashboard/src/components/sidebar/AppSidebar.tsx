@@ -10,6 +10,7 @@ import {
   GraduationCap,
   BookOpen,
   Eye,
+  BarChart3,
   Settings,
   PanelLeftClose,
   PanelLeftOpen,
@@ -105,7 +106,7 @@ export default function AppSidebar() {
         </SidebarSection>
 
         <SidebarSection title="Train" collapsed={collapsed}>
-          <SidebarLink to="/learn" icon={GraduationCap} label="Learn Mode" collapsed={collapsed} />
+          <SidebarLink to="/analyzer" icon={BarChart3} label="Race Analyzer" collapsed={collapsed} />
           <SidebarLink to="/knowledge" icon={BookOpen} label="Knowledge Base" collapsed={collapsed} />
           <SidebarLink to="/vision" icon={Eye} label="Vision" collapsed={collapsed} />
         </SidebarSection>

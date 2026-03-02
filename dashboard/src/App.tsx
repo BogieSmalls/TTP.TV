@@ -17,6 +17,7 @@ import Commentary from './pages/Commentary';
 import LearnMode from './pages/LearnMode';
 import KnowledgeManager from './pages/KnowledgeManager';
 import WebGPUVision from './pages/WebGPUVision';
+import RaceAnalyzer from './pages/RaceAnalyzer';
 
 // SYSTEM
 import Settings from './pages/Settings';
@@ -42,6 +43,7 @@ export default function App() {
               <Route path="/learn" element={<LearnMode />} />
               <Route path="/knowledge" element={<KnowledgeManager />} />
               <Route path="/vision" element={<WebGPUVision />} />
+              <Route path="/analyzer" element={<RaceAnalyzer />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>
           </ErrorBoundary>
