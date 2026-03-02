@@ -6,6 +6,8 @@ import { PlayerItemTracker } from './PlayerItemTracker.js';
 import { RaceItemTracker } from './RaceItemTracker.js';
 import { FloorItemTracker } from './FloorItemTracker.js';
 import { MinimapReader } from './MinimapReader.js';
+import { TriforceTracker } from './TriforceTracker.js';
+import { WarpDeathTracker } from './WarpDeathTracker.js';
 import type { RawPixelState, RawGameState, GameEvent, PendingFieldInfo, WebGPUStateUpdate } from './types.js';
 
 interface RacerPipeline {
@@ -16,6 +18,9 @@ interface RacerPipeline {
   raceItems: RaceItemTracker;
   floorItems: FloorItemTracker;
   minimap: MinimapReader;
+  triforce: TriforceTracker;
+  warpDeath: WarpDeathTracker;
+  isZ1R: boolean;
   prevMapPosition: number;
   prevDungeonLevel: number;
 }
@@ -37,7 +42,7 @@ export class VisionPipelineController {
     this.onStateUpdateCallback = cb;
   }
 
-  addRacer(racerId: string): void {
+  addRacer(racerId: string, isZ1R = true): void {
     this.pipelines.set(racerId, {
       interpreter: new PixelInterpreter(),
       stabilizer: new StateStabilizer(),
@@ -46,6 +51,9 @@ export class VisionPipelineController {
       raceItems: new RaceItemTracker(),
       floorItems: new FloorItemTracker(),
       minimap: new MinimapReader(),
+      triforce: new TriforceTracker(racerId),
+      warpDeath: new WarpDeathTracker(racerId),
+      isZ1R,
       prevMapPosition: -1,
       prevDungeonLevel: 0,
     });
@@ -63,8 +71,48 @@ export class VisionPipelineController {
     }
 
     const rawState = pipeline.interpreter.interpret(raw);
+
+    // Z1R SWAP: all subscreens are SWAP subscreens
+    if (rawState.screenType === 'subscreen' && pipeline.isZ1R) {
+      rawState.screenType = 'subscreen_swap';
+    }
+
     const stableState = pipeline.stabilizer.update(rawState);
     const events = pipeline.inferencer.update(stableState, raw.timestamp, raw.frameNumber);
+
+    // Triforce tracking (gold flash + dungeon exit)
+    pipeline.triforce.feedGoldPixels(raw.goldPixelCount);
+    pipeline.triforce.update(stableState, raw.timestamp, raw.frameNumber, events);
+
+    // Warp/death tracking
+    pipeline.warpDeath.update(stableState, raw.timestamp, raw.frameNumber, events,
+      pipeline.triforce.isGameCompleted);
+
+    // Register dungeon entrance positions for warp detection
+    if (stableState.screenType === 'dungeon' && stableState.dungeonLevel > 0) {
+      pipeline.warpDeath.registerDungeonEntrance(stableState.dungeonLevel, stableState.mapPosition);
+    }
+
+    // Floor item drop/pickup events
+    if (stableState.mapPosition !== pipeline.prevMapPosition
+        || stableState.dungeonLevel !== pipeline.prevDungeonLevel) {
+      pipeline.floorItems.onRoomChange();
+    }
+    const floorResult = pipeline.floorItems.update(rawState.floorItems);
+    for (const item of floorResult.newlyConfirmed) {
+      events.push({
+        type: 'item_drop', racerId: raw.racerId, timestamp: raw.timestamp,
+        frameNumber: raw.frameNumber, priority: 'low',
+        description: `Floor item: ${item.name}`, data: { name: item.name, x: item.x, y: item.y },
+      });
+    }
+    for (const item of floorResult.obtained) {
+      events.push({
+        type: 'item_pickup', racerId: raw.racerId, timestamp: raw.timestamp,
+        frameNumber: raw.frameNumber, priority: 'low',
+        description: `Picked up ${item.name}`, data: { name: item.name, x: item.x, y: item.y },
+      });
+    }
 
     // Update player item tracker on b_item changes
     for (const event of events) {

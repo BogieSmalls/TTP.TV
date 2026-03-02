@@ -90,6 +90,7 @@ export class PixelInterpreter {
       })),
       // Triforce detection disabled — needs flash-pattern animation detector (Python port)
       triforceCollected: 0,
+      inventory: {},  // non-Z1R inventory reading requires shader tile position additions
     };
   }
 

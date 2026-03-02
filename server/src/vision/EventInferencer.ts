@@ -14,12 +14,8 @@ export class EventInferencer {
   private prev: StableGameState | null = null;
   private visitedDungeons = new Set<number>();
   private lastDeathFrame = -900; // 30s cooldown at 30fps
-  private lastWarpFrame = -30;
-  private nonGameplayGapStart = -1;
   private lastGameplayHearts = 0;
   private lastGameplayScreen = 'overworld';
-  private prevSubscreenOpen = false;
-  private triforceOrangeFrames: number[] = [];
   private triforceD9Entered = false;
 
   constructor(racerId: string) {
@@ -38,7 +34,6 @@ export class EventInferencer {
       this._checkDeath(prev, state, timestamp, frameNumber, events);
       this._checkSubscreenOpen(prev, state, timestamp, frameNumber, events);
       this._checkGanonFight(prev, state, timestamp, frameNumber, events);
-      this._checkGameComplete(prev, state, timestamp, frameNumber, events);
     } else {
       // First frame: seed visited dungeons and D9 state without emitting events
       this._seedInitialState(state);
@@ -119,7 +114,8 @@ export class EventInferencer {
 
   private _checkSubscreenOpen(p: StableGameState, s: StableGameState,
                                ts: number, fn: number, ev: GameEvent[]): void {
-    if (s.screenType === 'subscreen' && p.screenType !== 'subscreen') {
+    const isSub = (t: string) => t === 'subscreen' || t === 'subscreen_swap';
+    if (isSub(s.screenType) && !isSub(p.screenType)) {
       this.emit(ev, 'subscreen_open', ts, fn, 'Subscreen opened');
     }
   }
@@ -129,15 +125,6 @@ export class EventInferencer {
     if (s.dungeonLevel === 9 && !this.triforceD9Entered) {
       this.triforceD9Entered = true;
       this.emit(ev, 'ganon_fight', ts, fn, 'Entered Ganon\'s lair (D9)');
-    }
-  }
-
-  private _checkGameComplete(p: StableGameState, s: StableGameState,
-                              ts: number, fn: number, ev: GameEvent[]): void {
-    // D9 exit: was in D9, now not in dungeon for extended period
-    if (p.dungeonLevel === 9 && s.dungeonLevel === 0
-        && !['dungeon'].includes(s.screenType)) {
-      this.emit(ev, 'game_complete', ts, fn, 'Game complete — exited D9');
     }
   }
 

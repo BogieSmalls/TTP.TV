@@ -34,7 +34,7 @@ export interface CalibrationUniform {
 }
 
 export interface RawGameState {
-  screenType: 'overworld' | 'dungeon' | 'cave' | 'subscreen' | 'death' | 'title' | 'transition' | 'unknown';
+  screenType: 'overworld' | 'dungeon' | 'cave' | 'subscreen' | 'subscreen_swap' | 'death' | 'title' | 'transition' | 'unknown';
   hudVisible: boolean;         // true when HUD digit NCC scores are confident
   dungeonLevel: number;
   rupees: number;
@@ -48,6 +48,7 @@ export interface RawGameState {
   mapPosition: number;
   floorItems: Array<{ name: string; x: number; y: number; score: number }>;
   triforceCollected: number;  // count of gold pixel clusters
+  inventory: Record<string, boolean>;  // subscreen item grid (empty for Z1R)
 }
 
 export type GameEventType =
@@ -118,4 +119,5 @@ export interface RacerConfig {
   role: RacerRole;
   startOffset?: number;     // seconds — seek to this time after video loads (VOD use)
   landmarks?: LandmarkPosition[];
+  isZ1R?: boolean;          // true for Z1R randomizer (SWAP subscreen, no inventory grid)
 }

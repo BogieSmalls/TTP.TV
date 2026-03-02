@@ -21,10 +21,11 @@ export class FloorItemTracker {
 
   update(rawItems: Array<{ name: string; x: number; y: number; score: number }>):
     { confirmed: Array<{ name: string; x: number; y: number; score: number }>;
-      obtained: Array<{ name: string; x: number; y: number; score: number }> } {
+      obtained: Array<{ name: string; x: number; y: number; score: number }>;
+      newlyConfirmed: Array<{ name: string; x: number; y: number; score: number }> } {
     if (this.graceFramesLeft > 0) {
       this.graceFramesLeft--;
-      return { confirmed: [], obtained: [] };
+      return { confirmed: [], obtained: [], newlyConfirmed: [] };
     }
 
     const seen = new Set<string>();
@@ -42,6 +43,7 @@ export class FloorItemTracker {
 
     const confirmed: Array<{ name: string; x: number; y: number; score: number }> = [];
     const obtained: Array<{ name: string; x: number; y: number; score: number }> = [];
+    const newlyConfirmed: Array<{ name: string; x: number; y: number; score: number }> = [];
 
     for (const [key, tracked] of this.items) {
       if (!seen.has(key)) {
@@ -52,9 +54,12 @@ export class FloorItemTracker {
         }
       } else if (tracked.confirmedFrames >= this.CONFIRM_FRAMES) {
         confirmed.push({ name: tracked.name, x: tracked.x, y: tracked.y, score: tracked.score });
+        if (tracked.confirmedFrames === this.CONFIRM_FRAMES) {
+          newlyConfirmed.push({ name: tracked.name, x: tracked.x, y: tracked.y, score: tracked.score });
+        }
       }
     }
 
-    return { confirmed, obtained };
+    return { confirmed, obtained, newlyConfirmed };
   }
 }
