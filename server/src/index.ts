@@ -143,6 +143,10 @@ async function main() {
 
   visionWorkerManager.onDebugFrame((racerId, jpeg) => {
     io.to('vision').emit('vision:webgpu:frame', { racerId, jpeg });
+    // Feed frame to analyzer session for thumbnail capture
+    if (racerId === analyzerSession.getInternalRacerId()) {
+      analyzerSession.feedFrame(jpeg);
+    }
   });
 
   visionWorkerManager.onRoomSnapshot((racerId, dungeonLevel, mapPosition, jpeg) => {
@@ -395,9 +399,8 @@ async function main() {
   app.use('/overlay', express.static(overlayDistPath));
   app.use('/overlay', express.static(overlayDevPath)); // fallback to src in dev
 
-  // Serve dashboard static files (production)
+  // Serve dashboard static files (production) — at root, AFTER other static mounts
   const dashboardDistPath = resolve(import.meta.dirname, '../../dashboard/dist');
-  app.use('/dashboard', express.static(dashboardDistPath));
 
   // Serve learn session snapshots
   const snapshotsPath = resolve(import.meta.dirname, '../../data/learn-snapshots');
@@ -422,7 +425,7 @@ async function main() {
   app.use('/api/vision', createVisionRoutes(visionWorkerManager, visionController, cropProfileService, db));
 
   // Race Analyzer endpoints
-  app.use('/api/analyzer', createAnalyzerRoutes(analyzerSession));
+  app.use('/api/analyzer', createAnalyzerRoutes(analyzerSession, cropProfileService, db));
 
   // API routes
   const apiRouter = createApiRoutes({
@@ -457,8 +460,24 @@ async function main() {
   });
   app.use('/api', apiRouter);
 
-  // SPA fallback for dashboard (Express 5 uses named splat params)
-  app.get('/dashboard/{*path}', (_req, res) => {
+  // Redirect old /dashboard URLs to new root
+  app.get('/dashboard/{*path}', (req, res) => {
+    const newPath = req.path.replace(/^\/dashboard/, '') || '/';
+    res.redirect(301, newPath);
+  });
+  app.get('/dashboard', (_req, res) => res.redirect(301, '/'));
+
+  // Dashboard static assets (served at root, after all API/overlay/vision-tab mounts)
+  app.use(express.static(dashboardDistPath));
+
+  // SPA fallback — serve index.html for any unmatched GET that isn't an API/asset route
+  app.get('{*path}', (req, res, next) => {
+    // Don't intercept API, overlay, vision-tab, or socket.io requests
+    if (req.path.startsWith('/api') || req.path.startsWith('/overlay') ||
+        req.path.startsWith('/vision-tab') || req.path.startsWith('/socket.io') ||
+        req.path.startsWith('/tts')) {
+      return next();
+    }
     res.sendFile(resolve(dashboardDistPath, 'index.html'));
   });
 
@@ -609,7 +628,7 @@ async function main() {
   httpServer.listen(config.server.port, () => {
     logger.info(`TTP Server listening on http://localhost:${config.server.port}`);
     logger.info(`Overlay URL: http://localhost:${config.server.port}/overlay`);
-    logger.info(`Dashboard URL: http://localhost:${config.server.port}/dashboard`);
+    logger.info(`Dashboard URL: http://localhost:${config.server.port}`);
     logger.info(`API URL: http://localhost:${config.server.port}/api`);
 
     // Start race monitoring after server is ready

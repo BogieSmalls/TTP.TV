@@ -9,6 +9,8 @@ function mockManager() {
     setPlaybackRate: vi.fn(),
     onVodEnded: vi.fn(),
     getActiveRacerIds: vi.fn().mockReturnValue([]),
+    startDebugStream: vi.fn(),
+    stopDebugStream: vi.fn(),
   };
 }
 
@@ -134,5 +136,64 @@ describe('RaceAnalyzerSession', () => {
     session.feedEvents([{ type: 'death', racerId: 'x', timestamp: 0, frameNumber: 0, priority: 'high', description: '' }]);
     session.feedState({ screenType: 'overworld', dungeonLevel: 0, rupees: 0, keys: 0, bombs: 0, heartsCurrentStable: 3, heartsMaxStable: 3, bItem: null, swordLevel: 0, hasMasterKey: false, mapPosition: 0, floorItems: [], triforceCollected: 0 }, {}, 0);
     expect(session.getStatus().eventsFound).toBe(0);
+  });
+
+  it('calls startDebugStream on start and stopDebugStream on finalize', async () => {
+    const mgr = mockManager();
+    const ctrl = mockController();
+    const session = new RaceAnalyzerSession(mgr as any, ctrl as any);
+    await session.start({ racerId: 'test', vodUrl: 'https://twitch.tv/videos/123', playbackRate: 2 });
+    expect(mgr.startDebugStream).toHaveBeenCalledWith('analyzer-test');
+
+    await session.stop();
+    expect(mgr.stopDebugStream).toHaveBeenCalledWith('analyzer-test');
+  });
+
+  it('stores frame snapshots every 5 seconds of VOD time', async () => {
+    const mgr = mockManager();
+    const ctrl = mockController();
+    const session = new RaceAnalyzerSession(mgr as any, ctrl as any);
+    await session.start({ racerId: 'test', vodUrl: 'https://twitch.tv/videos/123', playbackRate: 2 });
+
+    const baseState = { screenType: 'overworld' as const, dungeonLevel: 0, rupees: 0, keys: 0, bombs: 0, heartsCurrentStable: 3, heartsMaxStable: 3, bItem: null, swordLevel: 0, hasMasterKey: false, mapPosition: 0, floorItems: [] as any[], triforceCollected: 0 };
+    const fakeJpeg = Buffer.from('fake-jpeg').toString('base64');
+
+    // Feed state at 0s, 3s, 5s, 8s, 10s — feed frame after each state
+    for (const t of [0, 3, 5, 8, 10]) {
+      session.feedState(baseState, {}, t);
+      session.feedFrame(fakeJpeg);
+    }
+
+    // Should have snapshots at 0, 5, 10 (every 5 seconds)
+    expect(session.getFrameTimes()).toEqual([0, 5, 10]);
+    expect(session.getFrameSnapshot(0)).toBeInstanceOf(Buffer);
+    expect(session.getFrameSnapshot(1)).toBeInstanceOf(Buffer);
+    expect(session.getFrameSnapshot(2)).toBeInstanceOf(Buffer);
+    expect(session.getFrameSnapshot(99)).toBeNull();
+    expect(session.getStatus().frameSnapshotCount).toBe(3);
+  });
+
+  it('includes frameSnapshotCount in result summary', async () => {
+    const mgr = mockManager();
+    const ctrl = mockController();
+    const session = new RaceAnalyzerSession(mgr as any, ctrl as any);
+    await session.start({ racerId: 'test', vodUrl: 'https://twitch.tv/videos/123', playbackRate: 2 });
+
+    const baseState = { screenType: 'overworld' as const, dungeonLevel: 0, rupees: 0, keys: 0, bombs: 0, heartsCurrentStable: 3, heartsMaxStable: 3, bItem: null, swordLevel: 0, hasMasterKey: false, mapPosition: 0, floorItems: [] as any[], triforceCollected: 0 };
+    const fakeJpeg = Buffer.from('fake').toString('base64');
+
+    session.feedState(baseState, {}, 0);
+    session.feedFrame(fakeJpeg);
+    session.feedState(baseState, {}, 6);
+    session.feedFrame(fakeJpeg);
+
+    const result = await session.stop();
+    expect(result!.summary.frameSnapshotCount).toBe(2);
+  });
+
+  it('ignores feedFrame when not running', () => {
+    const session = new RaceAnalyzerSession(mockManager() as any, mockController() as any);
+    session.feedFrame(Buffer.from('test').toString('base64'));
+    expect(session.getFrameTimes()).toEqual([]);
   });
 });

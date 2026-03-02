@@ -1,12 +1,14 @@
 import type { VisionWorkerManager } from './VisionWorkerManager.js';
 import type { VisionPipelineController } from './VisionPipelineController.js';
-import type { GameEvent, StableGameState } from './types.js';
+import type { GameEvent, StableGameState, CalibrationUniform } from './types.js';
 
 export interface AnalyzerStartOptions {
   racerId: string;
   vodUrl: string;
   playbackRate?: number;
   startOffset?: number;
+  calibration?: CalibrationUniform;
+  landmarks?: Array<{label:string;x:number;y:number;w:number;h:number}>;
 }
 
 export interface AnalyzerResult {
@@ -26,6 +28,7 @@ export interface AnalyzerResult {
     dungeonsVisited: number[];
     gameComplete: boolean;
     totalFrames: number;
+    frameSnapshotCount: number;
   };
 }
 
@@ -38,7 +41,10 @@ export class RaceAnalyzerSession {
   private playbackRate = 2;
   private events: GameEvent[] = [];
   private stateSnapshots: Array<{ vodTime: number; state: StableGameState; items: Record<string, boolean> }> = [];
+  private frameSnapshots: Array<{ vodTime: number; jpeg: Buffer }> = [];
+  private currentVodTime = 0;
   private lastSnapshotTime = -1;
+  private lastFrameSnapshotTime = -Infinity;
   private frameCount = 0;
   private dungeonsVisited = new Set<number>();
   private result: AnalyzerResult | null = null;
@@ -66,23 +72,25 @@ export class RaceAnalyzerSession {
     this.playbackRate = options.playbackRate ?? 2;
     this.events = [];
     this.stateSnapshots = [];
+    this.frameSnapshots = [];
+    this.currentVodTime = 0;
     this.lastSnapshotTime = -1;
+    this.lastFrameSnapshotTime = -Infinity;
     this.frameCount = 0;
     this.dungeonsVisited.clear();
     this.result = null;
     this.state = 'running';
 
-    // TODO: accept calibration from API caller once crop profile lookup is wired in.
-    // Empty calibration triggers the worker's auto-calibration scan, which is
-    // sufficient for VODs where the NES game fills most of the frame.
     await this.manager.addRacer({
       racerId: this.internalRacerId,
       streamUrl: options.vodUrl,
-      calibration: {} as any,
+      calibration: options.calibration ?? {} as any,
       role: 'monitored',
       startOffset: options.startOffset,
+      landmarks: options.landmarks,
     });
     this.controller.addRacer(this.internalRacerId);
+    this.manager.startDebugStream(this.internalRacerId);
 
     // Set playback rate after a short delay to let the tab load
     setTimeout(() => {
@@ -103,6 +111,7 @@ export class RaceAnalyzerSession {
   feedState(stable: StableGameState, items: Record<string, boolean>, vodTime: number): void {
     if (this.state !== 'running') return;
     this.frameCount++;
+    this.currentVodTime = vodTime;
 
     // Track dungeons from stable state
     if (stable.dungeonLevel > 0) {
@@ -126,6 +135,23 @@ export class RaceAnalyzerSession {
     }
   }
 
+  feedFrame(jpeg: string): void {
+    if (this.state !== 'running') return;
+    // Store a frame snapshot every 5 seconds of VOD time
+    if (this.currentVodTime - this.lastFrameSnapshotTime >= 5.0) {
+      this.frameSnapshots.push({ vodTime: this.currentVodTime, jpeg: Buffer.from(jpeg, 'base64') });
+      this.lastFrameSnapshotTime = this.currentVodTime;
+    }
+  }
+
+  getFrameSnapshot(index: number): Buffer | null {
+    return this.frameSnapshots[index]?.jpeg ?? null;
+  }
+
+  getFrameTimes(): number[] {
+    return this.frameSnapshots.map(f => f.vodTime);
+  }
+
   async stop(): Promise<AnalyzerResult | null> {
     if (this.state !== 'running') return this.result;
     return this._finalize();
@@ -137,6 +163,7 @@ export class RaceAnalyzerSession {
   }
 
   private async _finalize(): Promise<AnalyzerResult> {
+    this.manager.stopDebugStream(this.internalRacerId);
     this.controller.removeRacer(this.internalRacerId);
     await this.manager.removeRacer(this.internalRacerId);
 
@@ -154,6 +181,7 @@ export class RaceAnalyzerSession {
         dungeonsVisited: [...this.dungeonsVisited].sort((a, b) => a - b),
         gameComplete: this.events.some(e => e.type === 'game_complete'),
         totalFrames: this.frameCount,
+        frameSnapshotCount: this.frameSnapshots.length,
       },
     };
 
@@ -162,13 +190,14 @@ export class RaceAnalyzerSession {
     return this.result;
   }
 
-  getStatus(): { state: SessionState; eventsFound: number; frameCount: number; vodTime: number } {
+  getStatus(): { state: SessionState; eventsFound: number; frameCount: number; vodTime: number; frameSnapshotCount: number } {
     const lastSnapshot = this.stateSnapshots[this.stateSnapshots.length - 1];
     return {
       state: this.state,
       eventsFound: this.events.length,
       frameCount: this.frameCount,
       vodTime: lastSnapshot?.vodTime ?? 0,
+      frameSnapshotCount: this.frameSnapshots.length,
     };
   }
 
