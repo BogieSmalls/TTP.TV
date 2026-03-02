@@ -30,11 +30,13 @@ describe('VisionManager.updateState()', () => {
     expect(result.state.rupees).toBe(50);
   });
 
-  it('hearts_max never decreases (debounce)', () => {
+  it('hearts_max overwrites on merge (debounce handled by StateStabilizer)', () => {
+    // VisionManager.updateState is a pass-through merge for the Python pipeline.
+    // Hearts debounce lives in StateStabilizer (WebGPU pipeline), not here.
     vm.updateState('racer1', { hearts_max: 6 });
     const result = vm.updateState('racer1', { hearts_max: 3 });
 
-    expect(result.state.hearts_max).toBe(6);
+    expect(result.state.hearts_max).toBe(3);
   });
 
   it('hearts_max can increase normally', () => {

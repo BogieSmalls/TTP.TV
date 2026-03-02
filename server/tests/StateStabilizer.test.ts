@@ -38,9 +38,12 @@ describe('StreakTracker', () => {
 });
 
 describe('StateStabilizer.getPendingFields()', () => {
-  // Use 'unknown' to match the StreakTracker initial value — no accumulation needed.
+  // Use initial values matching StreakTracker defaults to avoid spurious accumulation.
+  // hudVisible: true so HUD fields actually get updated.
+  // mapPosition: -1 matches the tracker's initial value (avoids 8-frame accumulation toward 0).
   const baseRaw = {
     screenType: 'unknown' as const,
+    hudVisible: true,
     heartsCurrentRaw: 3,
     heartsMaxRaw: 3,
     rupees: 0,
@@ -50,7 +53,7 @@ describe('StateStabilizer.getPendingFields()', () => {
     bItem: null,
     swordLevel: 0,
     hasMasterKey: false,
-    mapPosition: 0,
+    mapPosition: -1,
     floorItems: [],
     triforceCollected: 0,
   };
