@@ -9,6 +9,8 @@ export class VisionWorkerManager {
   private tabs = new Map<string, { page: Page; ws: WebSocket | null }>();
   private onStateCallback: ((state: RawPixelState) => void) | null = null;
   private onDebugFrameCallback: ((racerId: string, jpeg: string) => void) | null = null;
+  private onRoomSnapshotCallback: ((racerId: string, dungeonLevel: number, mapPosition: number, jpeg: string) => void) | null = null;
+  private roomSnapshots = new Map<string, Map<string, string>>();
   private monitoredRacers = new Set<string>();
   private featuredRacers = new Set<string>();
   private latestFrames = new Map<string, Buffer>();
@@ -39,6 +41,10 @@ export class VisionWorkerManager {
 
   onDebugFrame(cb: (racerId: string, jpeg: string) => void): void {
     this.onDebugFrameCallback = cb;
+  }
+
+  onRoomSnapshot(cb: (racerId: string, dungeonLevel: number, mapPosition: number, jpeg: string) => void): void {
+    this.onRoomSnapshotCallback = cb;
   }
 
   async addRacer(config: RacerConfig): Promise<void> {
@@ -92,6 +98,14 @@ export class VisionWorkerManager {
           } else if (msg.type === 'debugFrame' && typeof msg.jpeg === 'string') {
             this.cacheDebugFrame(racerId, msg.jpeg);
             this.onDebugFrameCallback?.(racerId, msg.jpeg);
+          } else if (msg.type === 'viewportCapture' && typeof msg.jpeg === 'string') {
+            const key = `${msg.dungeonLevel}-${msg.mapPosition}`;
+            if (!this.roomSnapshots.has(racerId)) this.roomSnapshots.set(racerId, new Map());
+            // Only store the first snapshot for each room — prevents Up+A warp
+            // from overwriting a room's image with the dungeon entrance screen
+            if (this.roomSnapshots.get(racerId)!.has(key)) return;
+            this.roomSnapshots.get(racerId)!.set(key, msg.jpeg);
+            this.onRoomSnapshotCallback?.(racerId, msg.dungeonLevel, msg.mapPosition, msg.jpeg);
           } else if (msg.type === 'heartbeat') {
             // intentionally ignored — tab keepalive, not game state
           } else if (msg.type === 'rawState') {
@@ -108,6 +122,7 @@ export class VisionWorkerManager {
       await entry.page.close();
       this.tabs.delete(racerId);
     }
+    this.roomSnapshots.delete(racerId);
   }
 
   async stop(): Promise<void> {
@@ -138,6 +153,10 @@ export class VisionWorkerManager {
 
   getLatestState(racerId: string): StableGameState | null {
     return this.latestStates.get(racerId) ?? null;
+  }
+
+  hasRoomSnapshot(racerId: string, dungeonLevel: number, mapPosition: number): boolean {
+    return this.roomSnapshots.get(racerId)?.has(`${dungeonLevel}-${mapPosition}`) ?? false;
   }
 
   sendToTab(racerId: string, message: object): void {

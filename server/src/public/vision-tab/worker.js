@@ -51,6 +51,43 @@ function handleServerMessage(msg) {
   if (msg.type === 'recalibrate') Object.assign(calib, msg.calib);
   if (msg.type === 'startDebugStream') { debugStreamActive = true; }
   if (msg.type === 'stopDebugStream') { debugStreamActive = false; }
+  if (msg.type === 'captureViewport') captureViewport(msg.dungeonLevel, msg.mapPosition);
+}
+
+// Off-screen canvas for viewport capture (96×66 for dungeon room snapshots)
+const viewportCanvas = document.createElement('canvas');
+viewportCanvas.width = 96;
+viewportCanvas.height = 66;
+const viewportCtx = viewportCanvas.getContext('2d');
+
+/** Capture NES viewport (rows 9-30) and send as JPEG to the server. */
+function captureViewport(dungeonLevel, mapPosition) {
+  if (!calibration || !video.videoWidth) return;
+  const gdx = calibration.gridDx ?? 0;
+  const gdy = calibration.gridDy ?? 0;
+  // NES viewport: nesY=64 (row 9 start), nesH=176 (rows 9-30), full width
+  const sx = calibration.cropX + (0 + gdx) * calibration.scaleX;
+  const sy = calibration.cropY + (64 + gdy) * calibration.scaleY;
+  const sw = 256 * calibration.scaleX;
+  const sh = 176 * calibration.scaleY;
+  viewportCanvas.width = 96;
+  viewportCanvas.height = 66;
+  viewportCtx.drawImage(video, sx, sy, sw, sh, 0, 0, 96, 66);
+  viewportCanvas.toBlob(blob => {
+    if (!blob || ws.readyState !== WebSocket.OPEN) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result.split(',')[1];
+      ws.send(JSON.stringify({
+        type: 'viewportCapture',
+        racerId,
+        dungeonLevel,
+        mapPosition,
+        jpeg: base64,
+      }));
+    };
+    reader.readAsDataURL(blob);
+  }, 'image/jpeg', 0.92);
 }
 
 // ── Video ──────────────────────────────────────────────────────────────────

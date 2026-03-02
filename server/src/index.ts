@@ -124,6 +124,10 @@ async function main() {
     io.to('vision').emit('vision:webgpu:frame', { racerId, jpeg });
   });
 
+  visionWorkerManager.onRoomSnapshot((racerId, dungeonLevel, mapPosition, jpeg) => {
+    io.to('vision').emit('vision:roomSnapshot', { racerId, dungeonLevel, mapPosition, jpeg });
+  });
+
   // ─── Learn Session Manager ───
   const learnManager = new LearnSessionManager(config);
 

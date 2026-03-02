@@ -81,6 +81,7 @@ export default function WebGPUVision() {
   const [starting, setStarting] = useState(false);
   const frameTimesRef = useRef<number[]>([]);
   const prevRacerRef = useRef<string | null>(null);
+  const [dungeonRoomImages, setDungeonRoomImages] = useState<Map<number, Map<number, string>>>(new Map());
 
   // Fetch active racers on mount
   useEffect(() => {
@@ -125,6 +126,19 @@ export default function WebGPUVision() {
   }, [selectedRacer]);
 
   useSocketEvent<WebGPUStateUpdate>('vision:webgpu:state', handleStateUpdate);
+
+  const handleRoomSnapshot = useCallback((data: { racerId: string; dungeonLevel: number; mapPosition: number; jpeg: string }) => {
+    if (data.racerId !== selectedRacer) return;
+    setDungeonRoomImages(prev => {
+      const next = new Map(prev);
+      const levelMap = new Map(next.get(data.dungeonLevel) ?? []);
+      levelMap.set(data.mapPosition, `data:image/jpeg;base64,${data.jpeg}`);
+      next.set(data.dungeonLevel, levelMap);
+      return next;
+    });
+  }, [selectedRacer]);
+
+  useSocketEvent<{ racerId: string; dungeonLevel: number; mapPosition: number; jpeg: string }>('vision:roomSnapshot', handleRoomSnapshot);
 
   const racerId = racerInput.trim();
   const isRunning = racerId !== '' && racerIds.includes(racerId);
@@ -318,6 +332,7 @@ export default function WebGPUVision() {
             mapPosition={stable?.mapPosition ?? -1}
             screenType={stable?.screenType ?? 'unknown'}
             dungeonLevel={stable?.dungeonLevel ?? 0}
+            dungeonRoomImages={dungeonRoomImages}
           />
         </div>
 

@@ -16,6 +16,8 @@ interface RacerPipeline {
   raceItems: RaceItemTracker;
   floorItems: FloorItemTracker;
   minimap: MinimapReader;
+  prevMapPosition: number;
+  prevDungeonLevel: number;
 }
 
 export class VisionPipelineController {
@@ -44,6 +46,8 @@ export class VisionPipelineController {
       raceItems: new RaceItemTracker(),
       floorItems: new FloorItemTracker(),
       minimap: new MinimapReader(),
+      prevMapPosition: -1,
+      prevDungeonLevel: 0,
     });
   }
 
@@ -68,6 +72,21 @@ export class VisionPipelineController {
         pipeline.playerItems.updateFromBItem(stableState.bItem);
       }
     }
+
+    // Detect dungeon room transitions and trigger viewport capture (first visit only)
+    if (stableState.dungeonLevel > 0
+        && stableState.mapPosition >= 0
+        && (stableState.mapPosition !== pipeline.prevMapPosition
+            || stableState.dungeonLevel !== pipeline.prevDungeonLevel)
+        && !this.manager.hasRoomSnapshot(raw.racerId, stableState.dungeonLevel, stableState.mapPosition)) {
+      this.manager.sendToTab(raw.racerId, {
+        type: 'captureViewport',
+        dungeonLevel: stableState.dungeonLevel,
+        mapPosition: stableState.mapPosition,
+      });
+    }
+    pipeline.prevMapPosition = stableState.mapPosition;
+    pipeline.prevDungeonLevel = stableState.dungeonLevel;
 
     // Cache stable state for REST endpoint
     this.manager.cacheState(raw.racerId, stableState);
